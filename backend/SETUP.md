@@ -29,3 +29,7 @@ A 2027 group absent from the 2026 report can be classified as new this year. Tha
 ## Checking stored report fields
 
 Administration includes a Stored report field audit computed from the raw latest baseline/current arrays returned by load_dashboard, before browser-side field filtering. It reports row counts, unexpected field names and an observation timestamp without showing values. It does not audit older historical snapshots or claim de-identification. Names, email, phone, enrollment/carrier details, costs and numeric age remain sensitive data. Extra-field detection is distinct from removing all PHI. Browser tests explicitly verify that an unexpected ssn key is flagged, rather than hidden by the client allowlist; database tests verify such fields are discarded on save.
+
+## Cost-column correction
+
+Employer allowance defaults to the CSV ichra_allotted column; premium averages use the premium column. The existing normalized JSON key fullPremium is retained for database compatibility, but now stores the reported premium value. No database migration is required. A numeric-regex bug previously rejected valid imported amounts (and numeric ages); fixing code cannot reconstruct those saved nulls. Re-upload the baseline/current reports after deploying this correction. Valid zero values count, blanks stay null, and full_premium is not silently substituted. Account tables now show prior active 2026 counts and current 2027 counts side by side, using the existing growth cohort.
