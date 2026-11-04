@@ -12,7 +12,9 @@ def handle(route):
  request=route.request;url=request.url;headers={'Content-Type':'application/json','Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'apikey,authorization,content-type','Access-Control-Allow-Methods':'POST,GET,OPTIONS'}
  if request.method=='OPTIONS':route.fulfill(status=204,headers=headers);return
  args=request.post_data_json if request.method=='POST' else {};requests.append((url,args))
- if '/auth/v1/otp' in url:active['email']=args['email'];result={}
+ if '/auth/v1/otp' in url:
+  if args['email']=='limited@thebigplan.com':route.fulfill(status=429,headers=headers,body=json.dumps({'msg':'email rate limit exceeded'}));return
+  active['email']=args['email'];result={}
  elif '/auth/v1/verify' in url:
   if args['token']!='123456':route.fulfill(status=400,headers=headers,body=json.dumps({'msg':'Invalid code'}));return
   result={'access_token':'test-access','refresh_token':'test-refresh','expires_in':3600}
@@ -45,6 +47,9 @@ with sync_playwright() as p:
  page.route('**/config.js*',lambda route:route.fulfill(content_type='application/javascript',body='window.BIG_PLAN_CONFIG={supabaseUrl:"https://abcdefghijklmnopqrst.supabase.co",publishableKey:"sb_publishable_test"}'))
  page.route('https://abcdefghijklmnopqrst.supabase.co/**',handle)
  page.goto(f'http://127.0.0.1:{server.server_port}/index.html');page.locator('#cloud-login-form').wait_for();assert not page.locator('main').is_visible()
+ page.locator('#cloud-email').fill('limited@thebigplan.com');page.locator('#cloud-login-form button').click();page.get_by_text('Email delivery is currently rate-limited',exact=False).wait_for();count=len([u for u,a in requests if '/auth/v1/otp' in u]);page.locator('#cloud-login-form button').click();page.get_by_text('Please wait a minute',exact=False).wait_for();assert len([u for u,a in requests if '/auth/v1/otp' in u])==count
+ page.reload();page.locator('#cloud-login-form').wait_for()
+ print('PASS provider rate-limit guidance and no immediate repeat email request')
  def login(email):
   page.locator('#cloud-email').fill(email);page.locator('#cloud-login-form button').click();page.locator('#cloud-code').wait_for();page.locator('#cloud-code').fill('123456');page.locator('#cloud-verify-form button').click();page.locator('#cloud-signout').wait_for()
  login('israelmamann@gmail.com');assert all(parse_qs(urlparse(url).query).get('redirect_to')==['https://israelmamann.github.io/dashboard/'] for url,args in requests if '/auth/v1/otp' in url);assert page.evaluate('Cloud.member.role')=='admin';assert page.locator('#role').is_hidden();assert page.locator('#mode').is_hidden()
