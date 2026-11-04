@@ -12,21 +12,21 @@ with sync_playwright() as p:
  page.get_by_role('button',name='Start slideshow').click();assert page.locator('#tv-config-error').inner_text()=='Choose at least one slide.'
  for box in page.locator('[name=slide]').all():box.check()
  page.locator('#tv-speed').select_option('10');page.get_by_role('button',name='Start slideshow').click()
- assert page.locator('#tv-screen').is_visible();assert page.locator('.tv-counter').inner_text()=='1 / 9'
+ assert page.locator('#tv-screen').is_visible();assert page.locator('.tv-counter').inner_text()==f'1 / {page.evaluate("tvTypes.length")}'
  for width,height in [(1920,1080),(1280,720)]:
   page.set_viewport_size({'width':width,'height':height})
-  for i in range(9):
+  for i in range(page.evaluate('tvTypes.length')):
    page.evaluate(f'tvIndex={i};tvPaint()')
    assert page.locator('#tv-content h1').count()==1
    overflow=page.evaluate('(()=>{let e=document.querySelector("#tv-content");return {vertical:e.scrollHeight>e.clientHeight+2,horizontal:e.scrollWidth>e.clientWidth+2}})()')
    assert not overflow['vertical'] and not overflow['horizontal'],(width,height,i,overflow)
    assert '@example.com' not in page.locator('#tv-screen').inner_text()
- print('Nine selectable slides, aggregate-only content, 1920×1080 and 1280×720 fit: passed')
+ print('All selectable slides including Fun Facts, aggregate-only content, 1920×1080 and 1280×720 fit: passed')
  page.locator('#tv-pause').click();assert page.evaluate('tvPaused && tvTimer===null')
- old=page.evaluate('tvIndex');page.keyboard.press('ArrowRight');assert page.evaluate('tvIndex')==(old+1)%9
+ old=page.evaluate('tvIndex');page.keyboard.press('ArrowRight');assert page.evaluate('tvIndex')==(old+1)%page.evaluate('tvTypes.length')
  page.keyboard.press('ArrowLeft');assert page.evaluate('tvIndex')==old
  page.keyboard.press('Space');assert not page.evaluate('tvPaused')
- page.clock.fast_forward(10001);assert page.evaluate('tvIndex')==(old+1)%9
+ page.clock.fast_forward(10001);assert page.evaluate('tvIndex')==(old+1)%page.evaluate('tvTypes.length')
  page.keyboard.press('Escape');assert page.locator('#tv-screen').is_hidden();assert page.evaluate('tvTimer===null && !tvActive')
  print('Autoplay, pause/play, keyboard navigation, Escape exit and timer cleanup: passed')
  page.evaluate('filters.manager="Alex Morgan";render()');page.locator('#launch-tv').click();page.get_by_role('button',name='Start slideshow').click();page.locator('#tv-next').click()
