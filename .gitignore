@@ -1,0 +1,17 @@
+# Local prototype includes selected real employee data and must not be published.
+/prototype/index.html
+/prototype/*.csv
+/prototype/*.zip
+/prototype/*.png
+/deployment/last-deployment.json
+.env
+.env.*
+.vercel/
+__pycache__/
+
+/deployment/pages-commit.txt
+
+node_modules/
+/deployment/public/
+/deployment/workspace/
+/deployment/*.zip

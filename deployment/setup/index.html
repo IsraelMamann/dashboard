@@ -1,0 +1,250 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>The Big Plan · Database setup</title><style>body{font:17px/1.6 system-ui,sans-serif;background:#f7f5ed;color:#161310;max-width:850px;margin:50px auto;padding:24px}h1{color:#c33067;font-size:40px;line-height:1.1}button,a.action{display:inline-block;font:600 17px system-ui;padding:15px 22px;border:0;background:#c33067;color:white;text-decoration:none;margin:10px 12px 12px 0;cursor:pointer}a.action{background:#191715}textarea{box-sizing:border-box;width:100%;height:330px;font:12px/1.5 monospace;padding:16px;border:1px solid #c9c0b1;background:#fff}#status{min-height:30px;color:#214c44;font-weight:600}li{margin-bottom:14px}small{color:#6f6257}</style></head><body><small>THE BIG PLAN · PRIVATE WORKSPACE SETUP · VERSION 2</small><h1>Connect your shared database.</h1><p>Do these steps once, in your own Supabase project.</p><ol><li>Click <b>Copy database script</b> below.</li><li>Open the <b>Supabase SQL Editor</b>, then click <b>New query</b> (or the + button).</li><li>Click inside the query editor and paste with <b>Ctrl+V</b> on Windows or <b>Command+V</b> on Mac.</li><li>Click <b>Run</b>. A successful result says <b>Success. No rows returned.</b></li></ol><button id="copy">Copy database script</button><a class="action" href="https://supabase.com/dashboard/project/grvcfnholcbopeczbwiz/sql" target="_blank" rel="noopener">Open Supabase SQL Editor ↗</a><div id="status" role="status"></div><details><summary>View the SQL script or copy it manually</summary><textarea id="sql" readonly aria-label="Database setup SQL">-- Run in Supabase SQL Editor as project owner. No service-role key belongs in the website.
+-- Rerunnable; existing reports, profiles and assignments are preserved.
+begin;
+
+create table if not exists public.members (
+ id uuid primary key references auth.users(id) on delete cascade,
+ email text not null unique,
+ role text not null default &#x27;viewer&#x27; check (role in (&#x27;viewer&#x27;,&#x27;account_manager&#x27;,&#x27;admin&#x27;)),
+ created_at timestamptz not null default now()
+);
+create table if not exists public.access_invitations (
+ email text primary key, role text not null check (role in (&#x27;viewer&#x27;,&#x27;account_manager&#x27;,&#x27;admin&#x27;)),
+ invited_by uuid references auth.users(id), expires_at timestamptz not null default now()+interval &#x27;7 days&#x27;,
+ accepted_at timestamptz, created_at timestamptz not null default now()
+);
+create table if not exists public.report_snapshots (
+ id uuid primary key default gen_random_uuid(),
+ kind text not null check (kind in (&#x27;baseline&#x27;,&#x27;current&#x27;)),
+ snapshot_date date not null,
+ rows jsonb not null check (jsonb_typeof(rows)=&#x27;array&#x27;),
+ employee_count integer not null default 0, covered_lives bigint not null default 0,
+ uploaded_by uuid references auth.users(id), created_at timestamptz not null default now(),
+ unique(kind,snapshot_date)
+);
+create table if not exists public.employer_assignments (
+ employer_account text primary key, account_manager text not null default &#x27;&#x27;, parent_account text not null default &#x27;&#x27;,
+ updated_at timestamptz not null default now()
+);
+
+create table if not exists public.workspace_state (id integer primary key check(id=1),revision bigint not null default 1);
+insert into public.workspace_state(id,revision) values(1,1) on conflict(id) do nothing;
+create or replace function public.bump_workspace_revision() returns trigger language plpgsql security definer set search_path=&#x27;&#x27; as $$
+begin update public.workspace_state set revision=revision+1 where id=1;return null;end $$;
+drop trigger if exists members_revision on public.members;
+create trigger members_revision after insert or update or delete on public.members for each statement execute function public.bump_workspace_revision();
+drop trigger if exists reports_revision on public.report_snapshots;
+create trigger reports_revision after insert or update or delete on public.report_snapshots for each statement execute function public.bump_workspace_revision();
+drop trigger if exists assignments_revision on public.employer_assignments;
+create trigger assignments_revision after insert or update or delete on public.employer_assignments for each statement execute function public.bump_workspace_revision();
+drop trigger if exists invitations_revision on public.access_invitations;
+create trigger invitations_revision after insert or update or delete on public.access_invitations for each statement execute function public.bump_workspace_revision();
+revoke all on public.workspace_state from anon,authenticated;
+revoke all on function public.bump_workspace_revision() from public,anon,authenticated;
+alter table public.workspace_state enable row level security;
+
+create or replace function public.app_role() returns text
+language sql stable security definer set search_path=&#x27;&#x27; as $$
+ select m.role from public.members m join auth.users u on u.id=m.id
+ where m.id=auth.uid() and u.email_confirmed_at is not null
+ and lower(m.email)=lower(auth.jwt()-&gt;&gt;&#x27;email&#x27;)
+$$;
+
+drop policy if exists state_read on public.workspace_state;
+create policy state_read on public.workspace_state for select to authenticated using (public.app_role() is not null);
+grant select on public.workspace_state to authenticated;
+create or replace function public.dashboard_revision() returns jsonb language plpgsql security invoker set search_path=&#x27;&#x27; as $$
+begin
+ if public.app_role() is null then raise exception &#x27;Verified workspace membership required&#x27; using errcode=&#x27;42501&#x27;; end if;
+ return jsonb_build_object(&#x27;revision&#x27;,(select revision from public.workspace_state where id=1),&#x27;role&#x27;,public.app_role());
+end $$;
+
+create or replace function public.enrollment_member_signup() returns trigger
+language plpgsql security definer set search_path=&#x27;&#x27; as $$
+declare mail text=lower(trim(new.email)); granted text; pending text;
+begin
+ select i.role into pending from public.access_invitations i where i.email=mail and i.expires_at&gt;now();
+ if mail=&#x27;israelmamann@gmail.com&#x27; then granted=&#x27;admin&#x27;;
+ elsif pending is not null then granted=pending;
+ elsif mail like &#x27;%@thebigplan.com&#x27; then granted=&#x27;viewer&#x27;;
+ else raise exception &#x27;This email is not approved for The Big Plan workspace&#x27;; end if;
+ insert into public.members(id,email,role) values(new.id,mail,granted)
+ on conflict(id) do update set email=excluded.email,role=case when public.members.email=excluded.email then public.members.role else excluded.role end;
+ if pending is not null then update public.access_invitations set accepted_at=now() where email=mail; end if;
+ return new;
+end
+$$;
+drop trigger if exists enrollment_member_signup on auth.users;
+create trigger enrollment_member_signup after insert or update of email on auth.users for each row execute function public.enrollment_member_signup();
+
+alter table public.members enable row level security;
+alter table public.access_invitations enable row level security;
+alter table public.report_snapshots enable row level security;
+alter table public.employer_assignments enable row level security;
+drop policy if exists members_read on public.members;
+create policy members_read on public.members for select to authenticated using (public.app_role() is not null and (id=auth.uid() or public.app_role()=&#x27;admin&#x27;));
+drop policy if exists invitations_read on public.access_invitations;
+create policy invitations_read on public.access_invitations for select to authenticated using (public.app_role()=&#x27;admin&#x27;);
+drop policy if exists reports_read on public.report_snapshots;
+create policy reports_read on public.report_snapshots for select to authenticated using (public.app_role() is not null);
+drop policy if exists assignments_read on public.employer_assignments;
+create policy assignments_read on public.employer_assignments for select to authenticated using (public.app_role() is not null);
+revoke all on public.members,public.access_invitations,public.report_snapshots,public.employer_assignments from anon,authenticated;
+grant select on public.members,public.access_invitations,public.report_snapshots,public.employer_assignments to authenticated;
+
+-- This allowlist runs on the database as well as in the browser. Extra source fields are discarded.
+create or replace function public.ensure_membership() returns void
+language plpgsql security definer set search_path=&#x27;&#x27; as $$
+declare mail text; granted text; pending text;
+begin
+ select lower(u.email) into mail from auth.users u where u.id=auth.uid() and u.email_confirmed_at is not null and lower(u.email)=lower(auth.jwt()-&gt;&gt;&#x27;email&#x27;);
+ if mail is null then raise exception &#x27;Verify your email before joining the workspace&#x27; using errcode=&#x27;42501&#x27;; end if;
+ if public.app_role() is not null then return; end if;
+ select i.role into pending from public.access_invitations i where i.email=mail and i.expires_at&gt;now();
+ if mail=&#x27;israelmamann@gmail.com&#x27; then granted=&#x27;admin&#x27;; elsif pending is not null then granted=pending; elsif mail like &#x27;%@thebigplan.com&#x27; then granted=&#x27;viewer&#x27;; else raise exception &#x27;This email has not been invited&#x27; using errcode=&#x27;42501&#x27;; end if;
+ insert into public.members(id,email,role) values(auth.uid(),mail,granted) on conflict(id) do nothing;
+ if pending is not null then update public.access_invitations set accepted_at=now() where email=mail; end if;
+end
+$$;
+
+create or replace function public.normalize_report(p_rows jsonb) returns jsonb
+language plpgsql security definer set search_path=&#x27;&#x27; as $$
+declare r jsonb; clean jsonb=&#x27;[]&#x27;::jsonb;
+begin
+ if jsonb_typeof(p_rows)&lt;&gt;&#x27;array&#x27; or jsonb_array_length(p_rows)&gt;50000 then raise exception &#x27;A report must contain at most 50000 employee rows&#x27;; end if;
+ for r in select value from jsonb_array_elements(p_rows) loop
+  if jsonb_typeof(r)&lt;&gt;&#x27;object&#x27; or length(trim(coalesce(r-&gt;&gt;&#x27;group&#x27;,&#x27;&#x27;)))=0 or length(trim(coalesce(r-&gt;&gt;&#x27;email&#x27;,&#x27;&#x27;)))=0 then raise exception &#x27;Each employee needs an employer and email&#x27;; end if;
+  if jsonb_typeof(r-&gt;&#x27;lives&#x27;) is distinct from &#x27;number&#x27; or (r-&gt;&gt;&#x27;lives&#x27;)::numeric&lt;1 or (r-&gt;&gt;&#x27;lives&#x27;)::numeric&lt;&gt;trunc((r-&gt;&gt;&#x27;lives&#x27;)::numeric) then raise exception &#x27;Covered lives must be a positive whole number&#x27;; end if;
+  if length(r-&gt;&gt;&#x27;email&#x27;)&gt;320 or length(r-&gt;&gt;&#x27;group&#x27;)&gt;400 then raise exception &#x27;Employer or email field is too long&#x27;; end if;
+  if exists(select 1 from unnest(array[&#x27;erAllowance&#x27;,&#x27;erApplied&#x27;,&#x27;fullPremium&#x27;,&#x27;age&#x27;]) k where r?k and r-&gt;k&lt;&gt;&#x27;null&#x27;::jsonb and (jsonb_typeof(r-&gt;k)&lt;&gt;&#x27;number&#x27; or (r-&gt;&gt;k)::numeric&lt;0)) then raise exception &#x27;Costs and age must be nonnegative numbers or null&#x27;; end if;
+  if r-&gt;&#x27;age&#x27;&lt;&gt;&#x27;null&#x27;::jsonb and (r-&gt;&gt;&#x27;age&#x27;)::numeric&gt;120 then raise exception &#x27;Employee age is invalid&#x27;; end if;
+ end loop;
+ select coalesce(jsonb_agg(jsonb_build_object(
+   &#x27;group&#x27;,trim(source.r-&gt;&gt;&#x27;group&#x27;),&#x27;email&#x27;,trim(source.r-&gt;&gt;&#x27;email&#x27;),&#x27;name&#x27;,coalesce(source.r-&gt;&gt;&#x27;name&#x27;,&#x27;&#x27;),&#x27;phone&#x27;,coalesce(source.r-&gt;&gt;&#x27;phone&#x27;,&#x27;&#x27;),
+   &#x27;status&#x27;,upper(replace(trim(coalesce(source.r-&gt;&gt;&#x27;status&#x27;,&#x27;&#x27;)),&#x27; &#x27;,&#x27;_&#x27;)),&#x27;lives&#x27;,(source.r-&gt;&gt;&#x27;lives&#x27;)::integer,
+   &#x27;state&#x27;,coalesce(source.r-&gt;&gt;&#x27;state&#x27;,&#x27;&#x27;),&#x27;carrier&#x27;,coalesce(source.r-&gt;&gt;&#x27;carrier&#x27;,&#x27;&#x27;),&#x27;effective&#x27;,coalesce(source.r-&gt;&gt;&#x27;effective&#x27;,&#x27;&#x27;),
+   &#x27;termination&#x27;,coalesce(source.r-&gt;&gt;&#x27;termination&#x27;,&#x27;&#x27;),&#x27;consent&#x27;,coalesce(source.r-&gt;&gt;&#x27;consent&#x27;,&#x27;&#x27;),
+   &#x27;erAllowance&#x27;,source.r-&gt;&#x27;erAllowance&#x27;,&#x27;erApplied&#x27;,source.r-&gt;&#x27;erApplied&#x27;,&#x27;fullPremium&#x27;,source.r-&gt;&#x27;fullPremium&#x27;,&#x27;age&#x27;,source.r-&gt;&#x27;age&#x27;,&#x27;tier&#x27;,coalesce(source.r-&gt;&gt;&#x27;tier&#x27;,&#x27;unknown&#x27;)
+  ) order by n),&#x27;[]&#x27;::jsonb) into clean from jsonb_array_elements(p_rows) with ordinality as source(r,n);
+ return clean;
+end
+$$;
+
+create or replace function public.save_report(p_kind text,p_snapshot_date date,p_rows jsonb) returns uuid
+language plpgsql security definer set search_path=&#x27;&#x27; as $$
+declare clean jsonb; result uuid; count_ee integer; count_lives bigint;
+begin
+ if public.app_role() is distinct from &#x27;admin&#x27; then raise exception &#x27;Only admins can upload reports&#x27; using errcode=&#x27;42501&#x27;; end if;
+ if p_kind not in (&#x27;baseline&#x27;,&#x27;current&#x27;) or p_snapshot_date is null then raise exception &#x27;Invalid report type or date&#x27;; end if;
+ clean=public.normalize_report(p_rows);
+ select count(*),coalesce(sum((r-&gt;&gt;&#x27;lives&#x27;)::integer),0) into count_ee,count_lives from jsonb_array_elements(clean) r
+ where case when p_kind=&#x27;baseline&#x27; then r-&gt;&gt;&#x27;status&#x27;=&#x27;ENROLLED&#x27; else r-&gt;&gt;&#x27;status&#x27; in (&#x27;ENROLLED&#x27;,&#x27;APPLICATION_READY&#x27;,&#x27;PAYMENT_READY&#x27;,&#x27;STUCK&#x27;) end;
+ insert into public.report_snapshots(kind,snapshot_date,rows,employee_count,covered_lives,uploaded_by)
+ values(p_kind,p_snapshot_date,clean,count_ee,count_lives,auth.uid())
+ on conflict(kind,snapshot_date) do update set rows=excluded.rows,employee_count=excluded.employee_count,covered_lives=excluded.covered_lives,uploaded_by=excluded.uploaded_by,created_at=now()
+ returning id into result;
+ return result;
+end
+$$;
+
+create or replace function public.save_assignments(p_assignments jsonb) returns integer
+language plpgsql security definer set search_path=&#x27;&#x27; as $$
+declare r jsonb; employer text; parent_label text; known jsonb;
+begin
+ if public.app_role() is distinct from &#x27;admin&#x27; then raise exception &#x27;Only admins can manage assignments&#x27; using errcode=&#x27;42501&#x27;; end if;
+ if jsonb_typeof(p_assignments)&lt;&gt;&#x27;array&#x27; then raise exception &#x27;Assignments must be a list&#x27;; end if;
+ if exists(select 1 from jsonb_array_elements(p_assignments) a group by a-&gt;&gt;&#x27;employer_account&#x27; having count(*)&gt;1) then raise exception &#x27;Duplicate employer in assignment file&#x27;; end if;
+ select coalesce(jsonb_agg(distinct e-&gt;&gt;&#x27;group&#x27;),&#x27;[]&#x27;) into known from
+ (select rows from public.report_snapshots where kind=&#x27;baseline&#x27; order by created_at desc limit 1) b cross join lateral jsonb_array_elements(b.rows) e;
+ known=known||coalesce((select jsonb_agg(distinct e-&gt;&gt;&#x27;group&#x27;) from
+ (select rows from public.report_snapshots where kind=&#x27;current&#x27; order by snapshot_date desc,created_at desc limit 1) c cross join lateral jsonb_array_elements(c.rows) e),&#x27;[]&#x27;);
+ for r in select value from jsonb_array_elements(p_assignments) loop
+  employer=trim(coalesce(r-&gt;&gt;&#x27;employer_account&#x27;,&#x27;&#x27;));parent_label=trim(coalesce(r-&gt;&gt;&#x27;parent_account&#x27;,&#x27;&#x27;));
+  if not known?employer then raise exception &#x27;Unknown employer in assignment file&#x27;; end if;
+  if parent_label=employer then parent_label=&#x27;&#x27;; end if;
+  insert into public.employer_assignments(employer_account,account_manager,parent_account)
+  values(employer,trim(coalesce(r-&gt;&gt;&#x27;account_manager&#x27;,&#x27;&#x27;)),parent_label)
+  on conflict(employer_account) do update set account_manager=excluded.account_manager,parent_account=excluded.parent_account,updated_at=now();
+ end loop;
+ if exists(select 1 from public.employer_assignments a join public.employer_assignments p on p.employer_account=a.parent_account where a.parent_account&lt;&gt;&#x27;&#x27; and p.parent_account&lt;&gt;&#x27;&#x27; and p.parent_account&lt;&gt;p.employer_account) then raise exception &#x27;Use one parent account level only&#x27;; end if;
+ return jsonb_array_length(p_assignments);
+end
+$$;
+
+create or replace function public.set_member_role(p_member_id uuid,p_role text) returns void
+language plpgsql security definer set search_path=&#x27;&#x27; as $$
+begin
+ if public.app_role() is distinct from &#x27;admin&#x27; then raise exception &#x27;Only admins can manage roles&#x27; using errcode=&#x27;42501&#x27;; end if;
+ if p_role not in (&#x27;viewer&#x27;,&#x27;account_manager&#x27;,&#x27;admin&#x27;) then raise exception &#x27;Invalid role&#x27;; end if;
+ if exists(select 1 from public.members where id=p_member_id and email=&#x27;israelmamann@gmail.com&#x27;) and p_role&lt;&gt;&#x27;admin&#x27; then raise exception &#x27;The workspace owner must remain an admin&#x27;; end if;
+ update public.members set role=p_role where id=p_member_id;
+ if not found then raise exception &#x27;Member not found&#x27;; end if;
+end
+$$;
+create or replace function public.invite_member(p_email text,p_role text default &#x27;admin&#x27;) returns jsonb
+language plpgsql security definer set search_path=&#x27;&#x27; as $$
+declare mail text=lower(trim(p_email)); member_id uuid;
+begin
+ if public.app_role() is distinct from &#x27;admin&#x27; then raise exception &#x27;Only admins can invite members&#x27; using errcode=&#x27;42501&#x27;; end if;
+ if mail!~&#x27;^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$&#x27; or p_role not in (&#x27;viewer&#x27;,&#x27;account_manager&#x27;,&#x27;admin&#x27;) then raise exception &#x27;Invalid invitation&#x27;; end if;
+ select id into member_id from public.members where email=mail;
+ if member_id is not null then perform public.set_member_role(member_id,p_role);return jsonb_build_object(&#x27;existing_member&#x27;,true); end if;
+ insert into public.access_invitations(email,role,invited_by) values(mail,p_role,auth.uid())
+ on conflict(email) do update set role=excluded.role,invited_by=excluded.invited_by,expires_at=now()+interval &#x27;7 days&#x27;,accepted_at=null,created_at=now();
+ return jsonb_build_object(&#x27;existing_member&#x27;,false);
+end
+$$;
+create or replace function public.revoke_invitation(p_email text) returns void
+language plpgsql security definer set search_path=&#x27;&#x27; as $$
+begin
+ if public.app_role() is distinct from &#x27;admin&#x27; then raise exception &#x27;Only admins can revoke invitations&#x27; using errcode=&#x27;42501&#x27;; end if;
+ delete from public.access_invitations where email=lower(trim(p_email)) and accepted_at is null;
+end
+$$;
+
+create or replace function public.load_dashboard() returns jsonb
+language plpgsql security invoker set search_path=&#x27;&#x27; as $$
+declare result jsonb;
+begin
+ if public.app_role() is null then raise exception &#x27;Verified workspace membership required&#x27; using errcode=&#x27;42501&#x27;; end if;
+ select jsonb_build_object(
+  &#x27;revision&#x27;,(select revision from public.workspace_state where id=1),
+  &#x27;baseline&#x27;,(select rows from public.report_snapshots where kind=&#x27;baseline&#x27; order by created_at desc limit 1),
+  &#x27;current&#x27;,(select rows from public.report_snapshots where kind=&#x27;current&#x27; order by snapshot_date desc,created_at desc limit 1),
+  &#x27;history&#x27;,coalesce((select jsonb_agg(jsonb_build_object(&#x27;date&#x27;,snapshot_date,&#x27;n&#x27;,employee_count,&#x27;uploadedAt&#x27;,created_at,&#x27;name&#x27;,&#x27;Shared daily snapshot&#x27;) order by snapshot_date) from public.report_snapshots where kind=&#x27;current&#x27;),&#x27;[]&#x27;),
+  &#x27;assignments&#x27;,coalesce((select jsonb_object_agg(employer_account,account_manager) from public.employer_assignments),&#x27;{}&#x27;),
+  &#x27;parents&#x27;,coalesce((select jsonb_object_agg(employer_account,parent_account) from public.employer_assignments),&#x27;{}&#x27;),
+  &#x27;member&#x27;,(select to_jsonb(m) from public.members m where id=auth.uid()),
+  &#x27;members&#x27;,case when public.app_role()=&#x27;admin&#x27; then coalesce((select jsonb_agg(to_jsonb(m) order by m.email) from public.members m),&#x27;[]&#x27;) else &#x27;[]&#x27;::jsonb end,
+  &#x27;invitations&#x27;,case when public.app_role()=&#x27;admin&#x27; then coalesce((select jsonb_agg(to_jsonb(i) order by i.created_at desc) from public.access_invitations i where i.accepted_at is null and i.expires_at&gt;now()),&#x27;[]&#x27;) else &#x27;[]&#x27;::jsonb end
+ ) into result;
+ return result;
+end
+$$;
+
+create or replace function public.export_contacts(p_selections jsonb) returns jsonb
+language plpgsql security invoker set search_path=&#x27;&#x27; as $$
+declare current_map jsonb; prior_map jsonb; selected jsonb; contact jsonb; result jsonb=&#x27;[]&#x27;::jsonb; key text;
+begin
+ if coalesce(public.app_role(),&#x27;&#x27;) not in (&#x27;admin&#x27;,&#x27;account_manager&#x27;) then raise exception &#x27;Export requires account manager or admin access&#x27; using errcode=&#x27;42501&#x27;; end if;
+ if jsonb_typeof(p_selections)&lt;&gt;&#x27;array&#x27; or jsonb_array_length(p_selections)&gt;50000 then raise exception &#x27;Invalid contact selection&#x27;; end if;
+ select coalesce(jsonb_object_agg(replace(lower(trim(r-&gt;&gt;&#x27;email&#x27;)),&#x27;delete&#x27;,&#x27;&#x27;),r),&#x27;{}&#x27;) into current_map from
+ (select rows from public.report_snapshots where kind=&#x27;current&#x27; order by snapshot_date desc,created_at desc limit 1) s cross join lateral jsonb_array_elements(s.rows) r
+ where r-&gt;&gt;&#x27;status&#x27; in (&#x27;ENROLLED&#x27;,&#x27;APPLICATION_READY&#x27;,&#x27;PAYMENT_READY&#x27;,&#x27;STUCK&#x27;);
+ select coalesce(jsonb_object_agg((r-&gt;&gt;&#x27;group&#x27;)||&#x27;|&#x27;||replace(lower(trim(r-&gt;&gt;&#x27;email&#x27;)),&#x27;delete&#x27;,&#x27;&#x27;),r),&#x27;{}&#x27;) into prior_map from
+ (select rows from public.report_snapshots where kind=&#x27;baseline&#x27; order by created_at desc limit 1) s cross join lateral jsonb_array_elements(s.rows) r where r-&gt;&gt;&#x27;status&#x27;=&#x27;ENROLLED&#x27;;
+ for selected in select value from jsonb_array_elements(p_selections) loop
+  key=replace(lower(trim(selected-&gt;&gt;&#x27;email&#x27;)),&#x27;delete&#x27;,&#x27;&#x27;);
+  contact=coalesce(current_map-&gt;key,prior_map-&gt;((selected-&gt;&gt;&#x27;group&#x27;)||&#x27;|&#x27;||key));
+  if contact is not null then result=result||jsonb_build_array(jsonb_build_object(&#x27;Group&#x27;,selected-&gt;&gt;&#x27;group&#x27;,&#x27;Employee name&#x27;,contact-&gt;&gt;&#x27;name&#x27;,&#x27;Email&#x27;,contact-&gt;&gt;&#x27;email&#x27;,&#x27;Phone&#x27;,contact-&gt;&gt;&#x27;phone&#x27;)); end if;
+ end loop;
+ return result;
+end
+$$;
+
+revoke all on function public.normalize_report(jsonb) from public,anon,authenticated;
+revoke all on function public.enrollment_member_signup() from public,anon,authenticated;
+revoke all on function public.app_role(),public.dashboard_revision(),public.ensure_membership(), public.save_report(text,date,jsonb),public.save_assignments(jsonb),public.set_member_role(uuid,text),public.invite_member(text,text),public.revoke_invitation(text),public.load_dashboard(),public.export_contacts(jsonb) from public,anon,authenticated;
+grant execute on function public.app_role(),public.dashboard_revision(),public.ensure_membership(),public.save_report(text,date,jsonb),public.save_assignments(jsonb),public.set_member_role(uuid,text),public.invite_member(text,text),public.revoke_invitation(text),public.load_dashboard(),public.export_contacts(jsonb) to authenticated;
+commit;
+</textarea></details><p><small>This creates empty tables, verified-email membership, permissions and report-storage functions. It does not upload employee data or require you to share a database password. If Supabase warns about DROP statements, these replace only this app's named policies and triggers; report records are preserved.</small></p><script>document.querySelector('#copy').onclick=async()=>{const text=document.querySelector('#sql').value;try{await navigator.clipboard.writeText(text);document.querySelector('#status').textContent='Copied! Open the Supabase SQL Editor, start a new query, paste, and click Run.'}catch{document.querySelector('details').open=true;document.querySelector('#sql').focus();document.querySelector('#sql').select();const copied=document.execCommand('copy');document.querySelector('#status').textContent=copied?'Copied! Paste into Supabase SQL Editor.':'The script is selected. Press Ctrl+C or Command+C, then paste into Supabase.'}};</script></body></html>
