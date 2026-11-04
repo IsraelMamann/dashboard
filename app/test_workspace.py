@@ -1,4 +1,5 @@
 from pathlib import Path
+from urllib.parse import urlparse,parse_qs
 import http.server,threading,functools,json,csv,io
 from playwright.sync_api import sync_playwright
 ROOT=Path(__file__).resolve().parent
@@ -46,7 +47,7 @@ with sync_playwright() as p:
  page.goto(f'http://127.0.0.1:{server.server_port}/index.html');page.locator('#cloud-login-form').wait_for();assert not page.locator('main').is_visible()
  def login(email):
   page.locator('#cloud-email').fill(email);page.locator('#cloud-login-form button').click();page.locator('#cloud-code').wait_for();page.locator('#cloud-code').fill('123456');page.locator('#cloud-verify-form button').click();page.locator('#cloud-signout').wait_for()
- login('israelmamann@gmail.com');assert page.evaluate('Cloud.member.role')=='admin';assert page.locator('#role').is_hidden();assert page.locator('#mode').is_hidden()
+ login('israelmamann@gmail.com');assert all(parse_qs(urlparse(url).query).get('redirect_to')==['https://israelmamann.github.io/dashboard/'] for url,args in requests if '/auth/v1/otp' in url);assert page.evaluate('Cloud.member.role')=='admin';assert page.locator('#role').is_hidden();assert page.locator('#mode').is_hidden()
  page.locator('[data-page=admin]').click();page.locator('#real-invite').wait_for()
  report='company_name,employee_email,first_name,last_name,enrollment_status,total_lives_on_plan,address_permanent_state,ssn,address_permanent_street,dependent_1_ssn\nEmployer A,employee@example.com,Test,Person,ENROLLED,2,NY,SECRET-SSN,SECRET-STREET,SECRET-DEPENDENT\n'
  for kind in ['base','current']:
@@ -58,7 +59,7 @@ with sync_playwright() as p:
  page.locator('[data-assign="Employer A"]').fill('Jordan');page.locator('[data-assign="Employer A"]').press('Tab');page.wait_for_function('assignment["Employer A"] === "Jordan"')
  page.locator('[data-parent-assign="Employer A"]').fill('Recover Care');page.locator('[data-parent-assign="Employer A"]').press('Tab');page.wait_for_function('parents["Employer A"] === "Recover Care"')
  page.locator('#real-invite-email').fill('newadmin@example.com');page.locator('#real-invite button').click();page.get_by_text('newadmin@example.com · Admin',exact=False).wait_for()
- print('PASS real auth API contract, hidden private UI before verification, server-loaded role, shared report saves, minimized payloads, assignments and invitations')
+ print('PASS explicit published-site email redirect, real auth API contract, hidden private UI before verification, server-loaded role, shared report saves, minimized payloads, assignments and invitations')
  page.locator('#cloud-signout').click();page.locator('#cloud-login-form').wait_for();assert page.evaluate('uploads.base === null && !Cloud.member');assert 'employee@example.com' not in page.locator('#app').inner_text();assert page.evaluate('sessionStorage.getItem("big-plan-workspace-session")') is None
  login('viewer@thebigplan.com');assert page.evaluate('role')=='Viewer';assert page.evaluate('uploads.current.length')==1;assert page.evaluate('parents["Employer A"]')=='Recover Care'
  page.locator('[data-page=groups]').click();page.locator('[data-parent="Recover Care"]').click();page.locator('.dialog [data-group="Employer A"]').click();assert page.locator('#export').is_disabled();page.locator('#close').click()
