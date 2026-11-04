@@ -25,3 +25,7 @@ Session tokens are stored in sessionStorage, not in the GitHub repository, URL, 
 ## Historical new-group limitation
 
 A 2027 group absent from the 2026 report can be classified as new this year. That does not reveal which groups were new during 2026. Prior-year new-group totals/growth are unavailable without a 2025 report or reliable historical activation data. New-only filters must not manufacture a zero baseline. Whole-company comparisons and renewal comparisons continue to use their documented baselines.
+
+## Checking stored report fields
+
+Administration includes a Stored report field audit computed from the raw latest baseline/current arrays returned by load_dashboard, before browser-side field filtering. It reports row counts, unexpected field names and an observation timestamp without showing values. It does not audit older historical snapshots or claim de-identification. Names, email, phone, enrollment/carrier details, costs and numeric age remain sensitive data. Extra-field detection is distinct from removing all PHI. Browser tests explicitly verify that an unexpected ssn key is flagged, rather than hidden by the client allowlist; database tests verify such fields are discarded on save.

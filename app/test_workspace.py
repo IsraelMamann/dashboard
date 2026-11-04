@@ -58,6 +58,11 @@ with sync_playwright() as p:
  for kind in ['base','current']:
   page.locator(f'[data-upload={kind}]').set_input_files({'name':kind+'.csv','mimeType':'text/csv','buffer':report.encode()});page.get_by_text('Saved to the shared workspace.',exact=True).wait_for()
   page.wait_for_function(f'uploads.{kind} !== null')
+ assert page.locator('#stored-field-audit').is_visible()
+ assert page.evaluate('Cloud.fieldAudit.baseline.rows')==1
+ assert page.evaluate('Cloud.fieldAudit.baseline.unexpectedFields.length')==0
+ assert page.evaluate('storedFieldAudit([{group:"A",ssn:"PRIVATE-SENTINEL"}]).unexpectedFields')==['ssn']
+ assert 'PRIVATE-SENTINEL' not in page.locator('#stored-field-audit').inner_text()
  assert 'SECRET-' not in json.dumps(state)
  assert [args['p_kind'] for url,args in requests if url.endswith('/save_report')]==['baseline','current']
  assert all(len(r)==16 for r in state['baseline'])
