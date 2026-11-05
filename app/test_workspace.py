@@ -72,6 +72,7 @@ with sync_playwright() as p:
  assert state['baseline'][0]['erAllowance']==600
  assert state['current'][0]['fullPremium']==800
  assert page.evaluate('Cloud.fieldAudit.baseline.numericCoverage.erAllowance.numeric')==1
+ page.locator('#employer-settings > summary').click()
  page.locator('[data-assign="Employer A"]').fill('Jordan');page.locator('[data-assign="Employer A"]').press('Tab');page.wait_for_function('assignment["Employer A"] === "Jordan"')
  page.locator('[data-parent-assign="Employer A"]').fill('Recover Care');page.locator('[data-parent-assign="Employer A"]').press('Tab');page.wait_for_function('parents["Employer A"] === "Recover Care"')
  page.locator('[data-nonrenew="Employer A"]').check();page.wait_for_function('nonRenewals["Employer A"] === true && !Cloud.busy')
@@ -92,6 +93,7 @@ with sync_playwright() as p:
  page.goto(f'http://127.0.0.1:{server.server_port}/index.html#access_token=rejected&refresh_token=bad&expires_in=3600');page.locator('#cloud-login-form').wait_for();assert not page.locator('main').is_visible();assert '#' not in page.url;assert page.evaluate('sessionStorage.getItem("big-plan-workspace-session")===null && localStorage.getItem("big-plan-workspace-session")===null')
  print('PASS secure-link callback is verified against the auth service, tokens removed from URL, and invalid callbacks are cleared/denied')
  active['email']='israelmamann@gmail.com';state.pop('nonRenewals');page.goto(f'http://127.0.0.1:{server.server_port}/index.html#access_token=verified-link-token&refresh_token=link-refresh&expires_in=3600');page.locator('#cloud-signout').wait_for();page.locator('[data-page=admin]').click()
+ page.locator('#employer-settings > summary').click()
  assert page.locator('[data-nonrenew="Employer A"]').is_disabled();assert page.locator('a[href="./renewal-setup/"]').is_visible()
  page.locator('#assignment-search').fill('Employer');assert page.locator('[data-nonrenew="Employer A"]').is_disabled()
  print('PASS shared renewal decisions survive reload, assignment updates and viewer login; missing database migration disables saves with setup guidance')

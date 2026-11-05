@@ -15,6 +15,7 @@ with sync_playwright() as p:
  uploads.current=[{...uploads.base[0],lives:3},uploads.base[1],{...uploads.base[3],lives:5}].map(r=>({...r,effective:'01/01/2027'}));
  assignment={'Expected A':'Jordan','Leaving B':'Jordan','Leaving C':'Taylor','Expected D':'Taylor','Inactive E':'Taylor'};parents={'Expected A':'Parent','Leaving B':'Parent'};nonRenewals={};mode='uploads';page='admin';render();
  }''')
+ page.locator('#employer-settings > summary').click()
  for group in ['Leaving B','Leaving C','Inactive E']:
   page.locator(f'[data-nonrenew="{group}"]').check()
  page.evaluate("page='managers';render()")

@@ -12,6 +12,7 @@ with sync_playwright() as p:
  uploads.base=base;uploads.current=base.slice(0,20).map(r=>({...r,effective:'01/01/2027',consent:'11/01/2026 1:00:00 PM'}));uploads.current.push({...uploads.current[0],email:'new@example.com',name:'New Employee',lives:5});
  assignment={};parents={};mode='uploads';page='admin';filters={manager:'',type:'',state:'',carrier:'',search:''};render();
  }''')
+ page.locator('#employer-settings > summary').click()
  with page.expect_download() as d:page.locator('#download-assignments').click()
  d.value.save_as('/tmp/account-template.csv');rows=list(csv.DictReader(open('/tmp/account-template.csv',newline='')))
  assert len(rows)==27
@@ -60,7 +61,7 @@ with sync_playwright() as p:
  assert page.evaluate('parents["Recover Care Location 26"]')=='Recover Care'
  print('Unknown/duplicate row rejection is atomic; partial imports preserve other employers and allow clearing a parent: passed')
  page.locator('#role').select_option('Viewer');assert page.locator('#download-assignments').count()==0;assert page.locator('#upload-assignments').count()==0
- page.reload();page.locator('#mode').select_option('sample');page.locator('[data-page=admin]').click()
+ page.reload();page.locator('#mode').select_option('sample');page.locator('[data-page=admin]').click();page.locator('#employer-settings > summary').click()
  assert page.evaluate('assignmentTemplate(model()).length')==465
  page.set_viewport_size({'width':390,'height':844});assert not page.evaluate('document.documentElement.scrollWidth>innerWidth')
  print('Admin-only template controls, all 465 sample employers and responsive assignment editor: passed')
