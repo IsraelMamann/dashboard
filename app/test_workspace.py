@@ -54,7 +54,7 @@ with sync_playwright() as p:
   page.locator('#cloud-email').fill(email);page.locator('#cloud-login-form button').click();page.locator('#cloud-code').wait_for();page.locator('#cloud-code').fill('123456');page.locator('#cloud-verify-form button').click();page.locator('#cloud-signout').wait_for()
  login('israelmamann@gmail.com');assert all(parse_qs(urlparse(url).query).get('redirect_to')==['https://israelmamann.github.io/dashboard/'] for url,args in requests if '/auth/v1/otp' in url);assert page.evaluate('Cloud.member.role')=='admin';assert page.locator('#role').is_hidden();assert page.locator('#mode').is_hidden()
  page.locator('[data-page=admin]').click();page.locator('#real-invite').wait_for()
- report='company_name,employee_email,first_name,last_name,enrollment_status,total_lives_on_plan,address_permanent_state,ssn,address_permanent_street,dependent_1_ssn\nEmployer A,employee@example.com,Test,Person,ENROLLED,2,NY,SECRET-SSN,SECRET-STREET,SECRET-DEPENDENT\n'
+ report='company_name,employee_email,first_name,last_name,enrollment_status,total_lives_on_plan,address_permanent_state,ssn,address_permanent_street,dependent_1_ssn,ichra_allotted,premium\nEmployer A,employee@example.com,Test,Person,ENROLLED,2,NY,SECRET-SSN,SECRET-STREET,SECRET-DEPENDENT,$ 600.00,$ 800.00\n'
  for kind in ['base','current']:
   page.locator(f'[data-upload={kind}]').set_input_files({'name':kind+'.csv','mimeType':'text/csv','buffer':report.encode()});page.get_by_text('Saved to the shared workspace.',exact=True).wait_for()
   page.wait_for_function(f'uploads.{kind} !== null')
@@ -66,6 +66,9 @@ with sync_playwright() as p:
  assert 'SECRET-' not in json.dumps(state)
  assert [args['p_kind'] for url,args in requests if url.endswith('/save_report')]==['baseline','current']
  assert all(len(r)==16 for r in state['baseline'])
+ assert state['baseline'][0]['erAllowance']==600
+ assert state['current'][0]['fullPremium']==800
+ assert page.evaluate('Cloud.fieldAudit.baseline.numericCoverage.erAllowance.numeric')==1
  page.locator('[data-assign="Employer A"]').fill('Jordan');page.locator('[data-assign="Employer A"]').press('Tab');page.wait_for_function('assignment["Employer A"] === "Jordan"')
  page.locator('[data-parent-assign="Employer A"]').fill('Recover Care');page.locator('[data-parent-assign="Employer A"]').press('Tab');page.wait_for_function('parents["Employer A"] === "Recover Care"')
  page.locator('#real-invite-email').fill('newadmin@example.com');page.locator('#real-invite button').click();page.get_by_text('newadmin@example.com · Admin',exact=False).wait_for()

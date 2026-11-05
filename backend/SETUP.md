@@ -33,3 +33,7 @@ Administration includes a Stored report field audit computed from the raw latest
 ## Cost-column correction
 
 Employer allowance defaults to the CSV ichra_allotted column; premium averages use the premium column. The existing normalized JSON key fullPremium is retained for database compatibility, but now stores the reported premium value. No database migration is required. The previous UI defaulted to ichra_consumed and imported full_premium, while the user supplied ichra_allotted and premium. Standard numeric parsing was already functional; missing premium values from the old mapping cannot be reconstructed from saved rows. Re-upload the baseline/current reports after deploying this correction. Valid zero values count, blanks stay null, and full_premium is not silently substituted. Account tables now show prior active 2026 counts and current 2027 counts side by side, using the existing growth cohort.
+
+### Export currency whitespace regression
+
+The original 14,850-row sample exports costs as `$ 500.00` (a space after `$`). Removing the currency symbol without trimming again rejected those amounts. The parser now trims after stripping dollar signs/commas. The full original CSV was tested locally: 14,850 numeric allowances and 8,386 numeric premiums are parsed; remaining premium cells are blank. Regression fixtures and the authenticated upload contract use that exact spacing. Old saved null values still require re-import from the original files after this correction.

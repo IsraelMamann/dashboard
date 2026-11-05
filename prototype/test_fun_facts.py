@@ -6,7 +6,7 @@ server=http.server.ThreadingHTTPServer(('127.0.0.1',0),functools.partial(http.se
 threading.Thread(target=server.serve_forever,daemon=True).start()
 FIELDS=['company_name','employee_email','first_name','last_name','phone_number','enrollment_status','total_lives_on_plan','address_permanent_state','current_plan_carrier','plan_effective_date','termination_date','consent_granted_date','ichra_allotted','ichra_consumed','premium','full_premium','level','age','ssn','birthday','dependent_1_first_name','dependent_1_ssn','address_permanent_street','address_permanent_city','address_permanent_zip','income','gender','smoker']
 def record(email,er,premium,age,lives,tier,state='NY',status='ENROLLED',year=2026,allowance=None):
- return dict(company_name='Employer A' if state=='NY' else 'Employer B',employee_email=email,first_name='Test',last_name='Employee',phone_number='202-555-0100',enrollment_status=status,total_lives_on_plan=lives,address_permanent_state=state,current_plan_carrier='Aetna',plan_effective_date=f'01/01/{year}',termination_date='08/01/2026' if status=='TERMINATED' else '',consent_granted_date=f'11/01/{year-1} 3:00:00 PM',ichra_allotted=allowance,ichra_consumed=er,premium=premium,full_premium=9999,level=tier,age=age,ssn='SECRET-SSN-123',birthday='SECRET-BIRTHDAY-456',dependent_1_first_name='SECRET-CHILD-NAME',dependent_1_ssn='SECRET-CHILD-SSN',address_permanent_street='SECRET-STREET',address_permanent_city='SECRET-CITY',address_permanent_zip='SECRET-ZIP',income='SECRET-INCOME',gender='SECRET-UNUSED-GENDER',smoker='SECRET-UNUSED-SMOKER')
+ return dict(company_name='Employer A' if state=='NY' else 'Employer B',employee_email=email,first_name='Test',last_name='Employee',phone_number='202-555-0100',enrollment_status=status,total_lives_on_plan=lives,address_permanent_state=state,current_plan_carrier='Aetna',plan_effective_date=f'01/01/{year}',termination_date='08/01/2026' if status=='TERMINATED' else '',consent_granted_date=f'11/01/{year-1} 3:00:00 PM',ichra_allotted=('$ '+str(allowance)) if allowance is not None and allowance!='' else '',ichra_consumed=('$ '+str(er)) if er!='' else '',premium=('$ '+str(premium)) if premium!='' else '',full_premium=9999,level=tier,age=age,ssn='SECRET-SSN-123',birthday='SECRET-BIRTHDAY-456',dependent_1_first_name='SECRET-CHILD-NAME',dependent_1_ssn='SECRET-CHILD-SSN',address_permanent_street='SECRET-STREET',address_permanent_city='SECRET-CITY',address_permanent_zip='SECRET-ZIP',income='SECRET-INCOME',gender='SECRET-UNUSED-GENDER',smoker='SECRET-UNUSED-SMOKER')
 def csv_bytes(rows):
  out=io.StringIO();writer=csv.DictWriter(out,fieldnames=FIELDS);writer.writeheader();writer.writerows(rows);return out.getvalue().encode()
 base=[record('a@example.com',100,400,20,1,'gold',allowance=150),record('b@example.com',300,800,40,3,'silver',state='TX',allowance=350),record('c@example.com',0,'','',2,'',status='TERMINATED',allowance=0),record('waived@example.com',9999,9999,99,9,'gold',status='WAIVED_COVERAGE',allowance=9999)]
@@ -32,6 +32,9 @@ with sync_playwright() as p:
  assert metrics[1]['a']['count']==2 and metrics[1]['b']['count']==3
  assert metrics[2]['a']['count']==2
  assert page.evaluate('finiteField("$1,234.50")')==1234.5
+ assert page.evaluate('finiteField("$ 1,234.50")')==1234.5
+ assert page.evaluate('finiteField("$ 0.00")')==0
+ assert page.evaluate('finiteField("$\\u00a0500.00")')==500
  assert page.evaluate('finiteField("0")')==0
  assert page.evaluate('finiteField("bad")') is None
  assert page.evaluate('planTier("Expanded Bronze")')=='expanded_bronze'

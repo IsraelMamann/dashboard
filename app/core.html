@@ -139,7 +139,7 @@ function renewalEmployerLives(m){
 }
 function finiteField(value,min=0,max=Infinity){
  if(value===null||value===undefined||String(value).trim()==='')return null;
- const text=String(value).trim().replace(/[$,]/g,'');if(!/^[-+]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(text))return null;
+ const text=String(value).trim().replace(/[$,]/g,'').trim();if(!/^[-+]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(text))return null;
  const n=Number(text);return Number.isFinite(n)&&n>=min&&n<=max?n:null;
 }
 function planTier(value){const key=String(value||'').trim().toLowerCase().replace(/[\s-]+/g,'_');return ['bronze','expanded_bronze','silver','gold','platinum','catastrophic'].includes(key)?key:'unknown'}
