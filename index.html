@@ -269,4 +269,4 @@ document.addEventListener('keydown',e=>{if(!tvActive)return;if(['ArrowRight','Ar
 document.addEventListener('fullscreenchange',()=>{if(tvActive){if(tvWasFullscreen&&!document.fullscreenElement){tvStop();return}tvWasFullscreen=!!document.fullscreenElement;tvPaint()}});
 
 document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{page=b.dataset.page;render()});$('#mode').onchange=e=>{mode=e.target.value;filters={manager:'',type:'',state:'',carrier:'',search:''};groupTab='active';render()};$('#role').onchange=e=>{role=e.target.value;$('#modal').classList.add('hidden');render()};$('#modal').onclick=e=>{if(e.target===$('#modal'))$('#modal').classList.add('hidden')};document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#modal').classList.add('hidden')});render();
-</script><script src="./cloud.js?v=29830101e70e"></script></body></html>
+</script><script src="./cloud.js?v=64d974118bc6"></script></body></html>
