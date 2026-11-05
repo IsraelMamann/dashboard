@@ -6,7 +6,8 @@ REPO=ROOT.parent
 workspace='--workspace' in sys.argv
 
 def git(*args,data=None,env=None):
- return subprocess.run(['git','-C',str(REPO),*args],input=data,text=True,check=True,stdout=subprocess.PIPE,env=env).stdout.strip()
+ result=subprocess.run(['git','-C',str(REPO),*args],input=data,text=not isinstance(data,bytes),check=True,stdout=subprocess.PIPE,env=env).stdout
+ return (result.decode() if isinstance(result,bytes) else result).strip()
 
 def no_real_records(html):
  match=re.search(r'<script id="sample" type="application/json">(.*?)</script>',html,re.S)
@@ -21,6 +22,7 @@ if workspace:
   try:claims=json.loads(base64.urlsafe_b64decode(key.split('.')[1]+'==='))
   except Exception:raise RuntimeError('Configure a public Supabase publishable/anon key first.')
   if claims.get('role')!='anon':raise RuntimeError('A privileged key must never be shipped to the browser.')
+ files['favicon.ico']=(ROOT/'workspace'/'favicon.ico').read_bytes()
  files.update({'index.html':html,'cloud.js':(ROOT/'workspace'/'cloud.js').read_text(),'cloud.css':(ROOT/'workspace'/'cloud.css').read_text(),'config.js':config,'demo/index.html':preview.replace('<div class="controls">','<div class="controls"><a href="../">Team sign-in</a>',1)})
 else:files['index.html']=preview
 setup=ROOT/'setup'/'index.html'

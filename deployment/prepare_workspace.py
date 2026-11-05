@@ -8,7 +8,10 @@ OUT.mkdir(exist_ok=True)
 html=(ROOT/'public'/'index.html').read_text()
 assert re.search(r'<script id="sample" type="application/json">(.*?)</script>',html,re.S)[1]=='[]'
 html=html.replace('<title>The Big Plan · Public dashboard preview</title>','<title>The Big Plan · Team enrollment workspace</title>')
-html=html.replace('</head>','<link rel="stylesheet" href="./cloud.css"><script src="./config.js"></script></head>',1)
+icon=APP/'assets'/'favicon.ico'
+icon_version=hashlib.sha256(icon.read_bytes()).hexdigest()[:12]
+html=html.replace('</head>',f'<link rel="icon" type="image/x-icon" href="./favicon.ico?v={icon_version}"><link rel="stylesheet" href="./cloud.css"><script src="./config.js"></script></head>',1)
+shutil.copyfile(icon,OUT/'favicon.ico')
 html=html.replace('<body>','<body><section id="auth-gate"><div class="auth-box"><h1>Private workspace</h1><p>Connecting secure sign-in…</p><noscript>Enable JavaScript to sign in.</noscript></div></section>',1)
 html=html.replace('</body>','<script src="./cloud.js"></script></body>',1)
 html=html.replace('YOUR UPLOADS · Session-only report data; replacing the baseline recalculates all comparisons.','SHARED REPORTS · Verified workspace data. Replacing the baseline recalculates comparisons for the team.')
