@@ -240,6 +240,40 @@ function trendChart(series){const max=Math.max(1,...series.map(h=>h.n));return `
 function momentumPanel(m){const series=snapshotSeries(m),latest=series.at(-1),previous=series.at(-2);return `<section class="panel" id="enrollment-momentum"><div class="panel-head"><div><h2>Enrollment over time</h2><div class="sub">Total enrolled employees in each daily report · whole company</div></div><span class="badge">${mode==='demo'?'Illustrative demo':series.length+' snapshots'}</span></div>${m.hasCurrent&&latest?`<div class="num">${fmt(latest.n)} <span class="sub">employees · ${prettyDay(latest.date)}</span></div><div class="sub">${previous?signed(latest.n-previous.n)+' net change since '+prettyDay(previous.date):'First snapshot · upload another dated report to see change'}</div>${trendChart(series)}`:'<div class="empty">Upload daily 2027 reports to build the enrollment trend.</div>'}<div class="trend-explainer">Each bar is the full enrolled total, not new enrollments that day. A move from 600 to 650 means 50 net additional employees. Uses the four qualifying statuses. Dashboard filters do not change this whole-company history. ${mode==='demo'?'Bars are fictional in demo mode.':'Snapshot history is saved in the shared workspace.'}</div></section>`}
 const tvTypes=[['lastyear','Last year · 2026 open enrollment'],['totals','This year · 2027 totals'],['pace','2026–2027 · same-date progress'],['groups','Renewal groups + new groups'],['managers','Account manager growth'],['opportunity','Reenrollment opportunity'],['states','Employees by State'],['carriers','Carrier mix'],['momentum','Enrollment over time'],['facts','Fun Facts · averages'],['tiers','Fun Facts · plan tiers']];
 let tvPrefs={slides:tvTypes.map(t=>t[0]),seconds:15,scope:'company',fullscreen:true},tvActive=false,tvIndex=0,tvPaused=false,tvTimer=null,tvWasFullscreen=false,tvSavedOverflow='';
+let tvWakeLock=null,tvWakeRequest=null,tvWakeRetry=null,tvWakeEpoch=0,tvWakeStatus='idle';
+function tvWakeLabel(){return {active:'Screen awake',requesting:'Keeping screen awake…',released:'Reconnecting keep-awake…',idle:'Keeping screen awake…'}[tvWakeStatus]||'Keep-awake unavailable'}
+function tvWakeFeedback(){const label=$('#tv-awake');if(label)label.textContent=tvWakeLabel()}
+function tvReleaseWakeLock(){
+ tvWakeEpoch++;clearTimeout(tvWakeRetry);tvWakeRetry=null;tvWakeRequest=null;
+ const lock=tvWakeLock;tvWakeLock=null;tvWakeStatus='idle';
+ if(lock&&!lock.released)lock.release().catch(()=>{});
+}
+function tvKeepAwake(){
+ if(!tvActive||document.hidden)return;
+ if(tvWakeLock&&!tvWakeLock.released)return;
+ if(tvWakeRequest)return tvWakeRequest.promise;
+ clearTimeout(tvWakeRetry);tvWakeRetry=null;
+ if(!navigator.wakeLock?.request){tvWakeStatus='unavailable';tvWakeFeedback();return}
+ const epoch=tvWakeEpoch,pending={};tvWakeStatus='requesting';tvWakeFeedback();
+ pending.promise=(async()=>{
+  try{
+   const lock=await navigator.wakeLock.request('screen');
+   if(!tvActive||document.hidden||epoch!==tvWakeEpoch){await lock.release();return}
+   tvWakeLock=lock;tvWakeStatus='active';tvWakeFeedback();
+   lock.addEventListener('release',()=>{
+    if(tvWakeLock!==lock)return;
+    tvWakeLock=null;if(!tvActive)return;
+    tvWakeStatus='released';tvWakeFeedback();
+    if(!document.hidden)tvWakeRetry=setTimeout(()=>{tvWakeRetry=null;tvKeepAwake()},5000);
+   });
+  }catch{if(epoch===tvWakeEpoch&&tvActive){tvWakeStatus='unavailable';tvWakeFeedback()}}
+ })().finally(()=>{if(tvWakeRequest===pending)tvWakeRequest=null});
+ tvWakeRequest=pending;return pending.promise;
+}
+document.addEventListener('visibilitychange',()=>{if(!tvActive)return;if(document.hidden)tvReleaseWakeLock();else tvKeepAwake()});
+window.addEventListener('focus',()=>{if(tvActive)tvKeepAwake()});
+window.addEventListener('pagehide',()=>{if(tvActive)tvReleaseWakeLock()});
+window.addEventListener('pageshow',()=>{if(tvActive)tvKeepAwake()});
 function tvConfigure(){
  $('#modal').classList.remove('hidden');$('#modal').innerHTML=`<div class="dialog"><div class="panel-head" style="align-items:flex-start;flex-wrap:wrap"><div style="flex:1;min-width:220px"><div class="eyebrow">OFFICE DISPLAY</div><h1 style="font-size:38px">Your big plan, on TV.</h1><p>Rotate summary cards with large text for the whole office.</p></div><div class="controls"><button id="tv-start" class="primary" type="submit" form="tv-config" style="font-size:14px;white-space:nowrap">Start slideshow →</button><button id="close" aria-label="Close">✕</button></div></div><div id="tv-config-error" role="alert"></div><form id="tv-config" style="display:block"><h3>Choose what to show</h3><div class="tv-options">${tvTypes.map(([id,label])=>`<label class="tv-option"><input type="checkbox" name="slide" value="${id}" ${tvPrefs.slides.includes(id)?'checked':''}>${label}</label>`).join('')}</div><div class="tv-settings"><label>Time per slide<select id="tv-speed">${[10,15,20,30].map(n=>`<option value="${n}" ${tvPrefs.seconds===n?'selected':''}>${n} seconds</option>`).join('')}</select></label><label>Display scope<select id="tv-scope"><option value="company" ${tvPrefs.scope==='company'?'selected':''}>Whole company</option><option value="filtered" ${tvPrefs.scope==='filtered'?'selected':''}>Current dashboard filters</option></select></label><label><input type="checkbox" id="tv-fullscreen" ${tvPrefs.fullscreen?'checked':''}> Fullscreen</label></div><div class="tv-date-label" id="tv-cutoff">Same-date comparison: today · ${prettyDay(todayNY())} · New York</div><p style="font-size:12px;margin-top:16px">TV slides show aggregate metrics and account manager names. Employee contact lists are not part of the slideshow. Use ← / → to navigate, Space to pause, and Escape to exit.</p></form></div>`;
  $('#close').onclick=()=>$('#modal').classList.add('hidden');$('#tv-config').onsubmit=e=>{e.preventDefault();const chosen=[...document.querySelectorAll('[name="slide"]:checked')].map(x=>x.value);if(!chosen.length){$('#tv-config-error').textContent='Choose at least one slide.';return}tvPrefs={slides:chosen,seconds:+$('#tv-speed').value,scope:$('#tv-scope').value,fullscreen:$('#tv-fullscreen').checked};tvStart()};
@@ -265,14 +299,14 @@ function tvSlideContent(m,id){
 function tvPaint(){
  if(!tvActive)return;const id=tvPrefs.slides[tvIndex],source=mode==='demo'?'FICTIONAL DEMO':mode==='sample'?'2026 SAMPLE':'UPLOADED REPORTS',scope=tvPrefs.scope==='company'?'Whole company':Object.entries(filters).filter(([,v])=>v).map(([k,v])=>k+': '+v).join(' · ')||'All dashboard data';
  const logo=$('.brand img').src;
- $('#tv-screen').innerHTML=`<div class="tv-header"><img src="${logo}" alt="The Big Plan"><div class="tv-header-meta"><strong>Big plans. Shared progress.</strong><span class="badge">${source}</span> <span class="tv-live">${esc(scope)}</span></div></div><div class="tv-body" id="tv-content">${tvScoped(m=>tvSlideContent(m,id))}</div><div class="tv-footer"><div class="tv-caption">${esc(tvTypes.find(t=>t[0]===id)?.[1]||'Enrollment')} · ${tvPrefs.seconds}s per slide<br>← / → navigate · Space pauses · Escape exits${tvPrefs.scope==='filtered'&&id==='momentum'?' · This slide uses whole-company history':''}</div><div class="tv-buttons"><button id="tv-prev" aria-label="Previous slide">←</button><button id="tv-pause">${tvPaused?'Play':'Pause'}</button><button id="tv-next" aria-label="Next slide">→</button><span class="tv-counter">${tvIndex+1} / ${tvPrefs.slides.length}</span><button id="tv-settings">Slides</button><button id="tv-fullscreen-toggle">${document.fullscreenElement?'Windowed':'Fullscreen'}</button><button id="tv-exit">Exit TV</button></div></div><div class="tv-progress ${tvPaused?'paused':''}" style="--tv-duration:${tvPrefs.seconds}s"><span></span></div>`;
+ $('#tv-screen').innerHTML=`<div class="tv-header"><img src="${logo}" alt="The Big Plan"><div class="tv-header-meta"><strong>Big plans. Shared progress.</strong><span class="badge">${source}</span> <span class="tv-live">${esc(scope)}</span></div></div><div class="tv-body" id="tv-content">${tvScoped(m=>tvSlideContent(m,id))}</div><div class="tv-footer"><div class="tv-caption">${esc(tvTypes.find(t=>t[0]===id)?.[1]||'Enrollment')} · ${tvPrefs.seconds}s per slide · <span id="tv-awake" role="status" title="If the display still turns off, check the TV or computer sleep timer.">${tvWakeLabel()}</span><br>← / → navigate · Space pauses · Escape exits${tvPrefs.scope==='filtered'&&id==='momentum'?' · This slide uses whole-company history':''}</div><div class="tv-buttons"><button id="tv-prev" aria-label="Previous slide">←</button><button id="tv-pause">${tvPaused?'Play':'Pause'}</button><button id="tv-next" aria-label="Next slide">→</button><span class="tv-counter">${tvIndex+1} / ${tvPrefs.slides.length}</span><button id="tv-settings">Slides</button><button id="tv-fullscreen-toggle">${document.fullscreenElement?'Windowed':'Fullscreen'}</button><button id="tv-exit">Exit TV</button></div></div><div class="tv-progress ${tvPaused?'paused':''}" style="--tv-duration:${tvPrefs.seconds}s"><span></span></div>`;
  $('#tv-prev').onclick=()=>tvStep(-1);$('#tv-next').onclick=()=>tvStep(1);$('#tv-pause').onclick=tvToggle;$('#tv-exit').onclick=tvStop;$('#tv-settings').onclick=()=>{tvStop();tvConfigure()};$('#tv-fullscreen-toggle').onclick=()=>{if(document.fullscreenElement){tvWasFullscreen=false;document.exitFullscreen().catch(()=>{})}else $('#tv-screen').requestFullscreen?.().catch(()=>{})};
 }
 function tvSchedule(){clearInterval(tvTimer);tvTimer=null;if(tvActive&&!tvPaused&&tvPrefs.slides.length>1)tvTimer=setInterval(()=>{tvIndex=(tvIndex+1)%tvPrefs.slides.length;tvPaint()},tvPrefs.seconds*1000)}
 function tvStep(delta){tvIndex=(tvIndex+delta+tvPrefs.slides.length)%tvPrefs.slides.length;tvPaint();tvSchedule()}
 function tvToggle(){tvPaused=!tvPaused;tvPaint();tvSchedule()}
-function tvStart(){clearInterval(tvTimer);$('#modal').classList.add('hidden');tvActive=true;tvIndex=0;tvPaused=false;tvWasFullscreen=false;tvSavedOverflow=document.body.style.overflow;document.body.style.overflow='hidden';$('#tv-screen').classList.remove('hidden');tvPaint();tvSchedule();$('#tv-pause').focus();if(tvPrefs.fullscreen)$('#tv-screen').requestFullscreen?.().then(()=>{tvWasFullscreen=true;tvPaint()}).catch(()=>{})}
-function tvStop(){tvActive=false;clearInterval(tvTimer);tvTimer=null;$('#tv-screen').classList.add('hidden');$('#tv-screen').innerHTML='';document.body.style.overflow=tvSavedOverflow;if(document.fullscreenElement===$('#tv-screen'))document.exitFullscreen().catch(()=>{});tvWasFullscreen=false;$('#launch-tv').focus()}
+function tvStart(){tvReleaseWakeLock();clearInterval(tvTimer);$('#modal').classList.add('hidden');tvActive=true;tvIndex=0;tvPaused=false;tvWasFullscreen=false;tvSavedOverflow=document.body.style.overflow;document.body.style.overflow='hidden';$('#tv-screen').classList.remove('hidden');tvPaint();tvSchedule();tvKeepAwake();$('#tv-pause').focus();if(tvPrefs.fullscreen)$('#tv-screen').requestFullscreen?.().then(()=>{tvWasFullscreen=true;tvPaint()}).catch(()=>{})}
+function tvStop(){tvActive=false;tvReleaseWakeLock();clearInterval(tvTimer);tvTimer=null;$('#tv-screen').classList.add('hidden');$('#tv-screen').innerHTML='';document.body.style.overflow=tvSavedOverflow;if(document.fullscreenElement===$('#tv-screen'))document.exitFullscreen().catch(()=>{});tvWasFullscreen=false;$('#launch-tv').focus()}
 
 let displayedDay=todayNY();
 function refreshForNewDay(){const day=todayNY();if(day===displayedDay)return;displayedDay=day;if(tvActive)tvPaint();else render();if($('#tv-cutoff'))$('#tv-cutoff').textContent='Same-date comparison: today · '+prettyDay(day)+' · New York'}
