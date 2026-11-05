@@ -1,8 +1,8 @@
-import os
+import os,time
 from playwright.sync_api import sync_playwright
 with sync_playwright() as p:
  b=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox'],proxy={'server':os.environ['HTTPS_PROXY']});page=b.new_page(viewport={'width':1440,'height':1000});errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
- page.goto('https://israelmamann.github.io/dashboard/?check=nonrenewals-v1',wait_until='networkidle',timeout=60000)
+ page.goto(f'https://israelmamann.github.io/dashboard/?check=remember-browser-{time.time_ns()}',wait_until='networkidle',timeout=60000)
  page.locator('#cloud-login-form').wait_for(timeout=15000)
  assert not page.locator('main').is_visible()
  assert page.locator('#cloud-email').is_visible()
@@ -17,6 +17,8 @@ with sync_playwright() as p:
  assert page.evaluate('cloudConfig()!==null')
  assert page.evaluate('cloudRedirectURL()')=='https://israelmamann.github.io/dashboard/'
  assert page.evaluate('parentTable(model()).includes("2027 new lives")')
+ assert page.evaluate('typeof Cloud.readSession')=='function'
+ assert 'keep you signed in' in page.locator('#auth-gate').inner_text()
  assert page.evaluate('typeof isNonRenewing')=='function'
  assert page.evaluate('filterUI(model()).includes("Chosen not to renew")')
  assert page.evaluate('managers(model()).includes("Accounts that chose not to renew")')
