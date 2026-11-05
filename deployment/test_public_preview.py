@@ -29,7 +29,7 @@ with sync_playwright() as p:
  page.locator('[data-page=managers]').click();page.locator('#renewal-employer-lives').wait_for()
  page.locator('[data-page=insights]').click();page.get_by_role('heading',name='Fun Facts',exact=True).wait_for()
  assert page.locator('[data-fact]').count()==4
- page.locator('#launch-tv').click();page.locator('#tv-fullscreen').uncheck();page.get_by_role('button',name='Start slideshow').click();assert page.locator('#tv-screen').is_visible();page.locator('#tv-exit').click()
+ page.locator('#launch-tv').click();page.locator('#tv-fullscreen').uncheck();page.get_by_role('button',name='Start slideshow').click();assert page.locator('#tv-screen').is_visible();page.keyboard.press('Escape')
  assert not errors,errors
  b.close()
 print('PASS: no embedded private records or employee emails; public-preview branding, security headers, metrics, Fun Facts and slideshow work.')

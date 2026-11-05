@@ -23,7 +23,7 @@ with sync_playwright() as p:
  assert 'Nov 5, 2026' in page.locator('#tv-content').inner_text()
  page.clock.set_system_time(datetime(2026,11,6,5,0,1,tzinfo=timezone.utc));page.clock.fast_forward(30001)
  assert 'Nov 6, 2026' in page.locator('#tv-content').inner_text()
- page.locator('#tv-exit').click()
+ page.keyboard.press('Escape')
  print('New York calendar day, no editable cutoff, automatic overnight dashboard/TV refresh, same date last year: passed')
  page.evaluate('''()=>{
  const r=(g,e,l)=>({group:g,email:e,name:'Example Employee',phone:'202-555-0100',lives:l,status:'ENROLLED',state:'NY',carrier:'Aetna',effective:'01/01/2026',termination:'',consent:'11/01/2025'});

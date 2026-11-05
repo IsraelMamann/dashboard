@@ -18,5 +18,5 @@ with sync_playwright() as p:
  assert '2026 · new-group history unavailable' in page.locator('#plan-tier-panel').inner_text()
  page.locator('#launch-tv').click();page.locator('#tv-fullscreen').uncheck();page.locator('#tv-scope').select_option('filtered');page.get_by_role('button',name='Start slideshow').click()
  page.evaluate('tvIndex=1;tvPaint()');assert 'no year-over-year growth is calculated' in page.locator('#tv-content').inner_text()
- page.locator('#tv-exit').click();page.locator('[data-filter=type]').select_option('Renewal');page.locator('[data-page=overview]').click();assert page.locator('.annual-comparison tbody tr').first.locator('td').nth(1).inner_text()=='763'
+ page.keyboard.press('Escape');page.locator('[data-filter=type]').select_option('Renewal');page.locator('[data-page=overview]').click();assert page.locator('.annual-comparison tbody tr').first.locator('td').nth(1).inner_text()=='763'
  assert not errors,errors;print('PASS new-group history is unavailable, not zero; no invented year-over-year change; current new-group counts and renewal comparisons remain valid.');b.close()

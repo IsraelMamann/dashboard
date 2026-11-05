@@ -4,6 +4,8 @@ from playwright.sync_api import sync_playwright
 root=Path(__file__).resolve().parent
 server=http.server.ThreadingHTTPServer(('127.0.0.1',0),functools.partial(http.server.SimpleHTTPRequestHandler,directory=str(root)))
 threading.Thread(target=server.serve_forever,daemon=True).start()
+def click_tv(page,selector):
+ page.locator('#tv-screen').dispatch_event('pointermove');page.locator(selector).click()
 with sync_playwright() as p:
  b=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox']);page=b.new_page(viewport={'width':1920,'height':1080});errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
  page.goto(f'http://127.0.0.1:{server.server_port}/index.html');page.clock.install();page.locator('#launch-tv').click()
@@ -12,8 +14,16 @@ with sync_playwright() as p:
  page.get_by_role('button',name='Start slideshow').click();assert page.locator('#tv-config-error').inner_text()=='Choose at least one slide.'
  for box in page.locator('[name=slide]').all():box.check()
  page.locator('#tv-speed').select_option('10');page.get_by_role('button',name='Start slideshow').click()
- assert page.locator('#tv-screen').is_visible();assert page.locator('.tv-counter').inner_text()==f'1 / {page.evaluate("tvTypes.length")}'
- for width,height in [(1920,1080),(1280,720)]:
+ assert page.locator('#tv-screen').is_visible();assert page.locator('.tv-counter').text_content()==f'1 / {page.evaluate("tvTypes.length")}'
+ assert page.locator('.tv-footer').is_hidden();assert page.locator('.tv-progress').is_hidden()
+ content_height=page.locator('#tv-content').bounding_box()['height']
+ page.locator('#tv-screen').dispatch_event('pointermove');assert page.locator('.tv-footer').is_visible()
+ assert page.locator('#tv-content').bounding_box()['height']==content_height
+ page.clock.fast_forward(3001);assert page.locator('.tv-footer').is_hidden()
+ page.locator('#tv-screen').dispatch_event('pointerdown');assert page.locator('.tv-footer').is_visible()
+ page.clock.fast_forward(3001);assert page.locator('.tv-footer').is_hidden()
+ print('Footer and progress hidden during playback; pointer/touch controls overlay without reducing slide height and auto-hide: passed')
+ for width,height in [(1920,1080),(1280,720),(1280,540)]:
   page.set_viewport_size({'width':width,'height':height})
   for i in range(page.evaluate('tvTypes.length')):
    page.evaluate(f'tvIndex={i};tvPaint()')
@@ -21,19 +31,19 @@ with sync_playwright() as p:
    overflow=page.evaluate('(()=>{let e=document.querySelector("#tv-content");return {vertical:e.scrollHeight>e.clientHeight+2,horizontal:e.scrollWidth>e.clientWidth+2}})()')
    assert not overflow['vertical'] and not overflow['horizontal'],(width,height,i,overflow)
    assert '@example.com' not in page.locator('#tv-screen').inner_text()
- print('All selectable slides including Fun Facts, aggregate-only content, 1920×1080 and 1280×720 fit: passed')
- page.locator('#tv-pause').click();assert page.evaluate('tvPaused && tvTimer===null')
+ print('All selectable slides including Fun Facts, aggregate-only content, 1920×1080, 1280×720 and 1280×540 fit: passed')
+ click_tv(page,'#tv-pause');assert page.evaluate('tvPaused && tvTimer===null')
  old=page.evaluate('tvIndex');page.keyboard.press('ArrowRight');assert page.evaluate('tvIndex')==(old+1)%page.evaluate('tvTypes.length')
  page.keyboard.press('ArrowLeft');assert page.evaluate('tvIndex')==old
  page.keyboard.press('Space');assert not page.evaluate('tvPaused')
  page.clock.fast_forward(10001);assert page.evaluate('tvIndex')==(old+1)%page.evaluate('tvTypes.length')
  page.keyboard.press('Escape');assert page.locator('#tv-screen').is_hidden();assert page.evaluate('tvTimer===null && !tvActive')
  print('Autoplay, pause/play, keyboard navigation, Escape exit and timer cleanup: passed')
- page.evaluate('filters.manager="Alex Morgan";render()');page.locator('#launch-tv').click();page.get_by_role('button',name='Start slideshow').click();page.locator('#tv-next').click()
+ page.evaluate('filters.manager="Alex Morgan";render()');page.locator('#launch-tv').click();page.get_by_role('button',name='Start slideshow').click();click_tv(page,'#tv-next')
  assert '726' in page.locator('#tv-content').inner_text();assert page.evaluate('filters.manager')=='Alex Morgan'
- page.locator('#tv-exit').click();page.locator('#launch-tv').click();page.locator('#tv-scope').select_option('filtered');page.get_by_role('button',name='Start slideshow').click();page.locator('#tv-next').click()
+ click_tv(page,'#tv-exit');page.locator('#launch-tv').click();page.locator('#tv-scope').select_option('filtered');page.get_by_role('button',name='Start slideshow').click();click_tv(page,'#tv-next')
  expected=page.evaluate('model().now.filter(r=>match(r,model())).length');assert str(expected) in page.locator('#tv-content').inner_text()
- page.locator('#tv-fullscreen-toggle').click();page.wait_for_function('document.fullscreenElement?.id === "tv-screen"');page.locator('#tv-fullscreen-toggle').click();page.wait_for_function('!document.fullscreenElement');assert page.evaluate('tvActive');page.locator('#tv-exit').click();print('Native fullscreen/windowed controls, whole-company default and optional filtered scope preserve dashboard filters: passed')
+ click_tv(page,'#tv-fullscreen-toggle');page.wait_for_function('document.fullscreenElement?.id === "tv-screen"');click_tv(page,'#tv-fullscreen-toggle');page.wait_for_function('!document.fullscreenElement');assert page.evaluate('tvActive');click_tv(page,'#tv-exit');print('Native fullscreen/windowed controls, whole-company default and optional filtered scope preserve dashboard filters: passed')
  # Exercise dated snapshot replacement using small complete CSVs.
  page.evaluate('filters={manager:"",type:"",state:"",carrier:"",search:""};page="admin";render()')
  csv='company_name,employee_email,enrollment_status,total_lives_on_plan,consent_granted_date\nTest,test@example.com,ENROLLED,2,11/04/2026 3:00:00 PM\n'
@@ -49,5 +59,5 @@ with sync_playwright() as p:
  # Capture a clean fictional TV preview.
  page.reload();page.set_viewport_size({'width':1920,'height':1080});page.locator('#launch-tv').click();page.locator('#tv-fullscreen').uncheck();page.get_by_role('button',name='Start slideshow').click();page.evaluate('tvIndex=2;tvPaused=true;tvPaint();tvSchedule()')
  page.screenshot(path=str(root/'tv-preview.png'),animations='disabled')
- page.locator('#tv-exit').click();assert not errors,errors
+ click_tv(page,'#tv-exit');assert not errors,errors
  print('No browser errors: passed');b.close()
