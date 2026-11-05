@@ -5,7 +5,7 @@ from playwright.sync_api import sync_playwright
 ROOT=Path(__file__).resolve().parent
 server=http.server.ThreadingHTTPServer(('127.0.0.1',0),functools.partial(http.server.SimpleHTTPRequestHandler,directory=str(ROOT.parent/'deployment'/'workspace')))
 threading.Thread(target=server.serve_forever,daemon=True).start()
-state={'baseline':None,'current':None,'history':[],'assignments':{},'parents':{},'revision':1,'members':[{'id':'owner','email':'israelmamann@gmail.com','role':'admin'},{'id':'viewer','email':'viewer@thebigplan.com','role':'viewer'}],'invitations':[]}
+state={'baseline':None,'current':None,'history':[],'assignments':{},'parents':{},'nonRenewals':{},'revision':1,'members':[{'id':'owner','email':'israelmamann@gmail.com','role':'admin'},{'id':'viewer','email':'viewer@thebigplan.com','role':'viewer'}],'invitations':[]}
 active={'email':None}
 requests=[]
 def handle(route):
@@ -33,6 +33,9 @@ def handle(route):
    state[args['p_kind']]=args['p_rows'];state['revision']+=1
    if args['p_kind']=='current':state['history']=[{'date':args['p_snapshot_date'],'n':len(args['p_rows']),'uploadedAt':'2026-11-04T12:00:00Z','name':'Shared daily snapshot'}]
    result='report-id'
+  elif rpc=='set_nonrenewal':
+   if member['role']!='admin':route.fulfill(status=403,headers=headers,body=json.dumps({'message':'Only admins can change renewal decisions'}));return
+   state['nonRenewals'][args['p_employer']]=args['p_not_renewing'];state['revision']+=1;result=None
   elif rpc=='save_assignments':
    for row in args['p_assignments']:state['assignments'][row['employer_account']]=row['account_manager'];state['parents'][row['employer_account']]=row['parent_account']
    state['revision']+=1;result=len(args['p_assignments'])
@@ -71,10 +74,14 @@ with sync_playwright() as p:
  assert page.evaluate('Cloud.fieldAudit.baseline.numericCoverage.erAllowance.numeric')==1
  page.locator('[data-assign="Employer A"]').fill('Jordan');page.locator('[data-assign="Employer A"]').press('Tab');page.wait_for_function('assignment["Employer A"] === "Jordan"')
  page.locator('[data-parent-assign="Employer A"]').fill('Recover Care');page.locator('[data-parent-assign="Employer A"]').press('Tab');page.wait_for_function('parents["Employer A"] === "Recover Care"')
+ page.locator('[data-nonrenew="Employer A"]').check();page.wait_for_function('nonRenewals["Employer A"] === true && !Cloud.busy')
+ page.locator('[data-assign="Employer A"]').fill('Jordan');page.locator('[data-assign="Employer A"]').press('Tab');page.wait_for_function('!Cloud.busy')
+ assert state['nonRenewals']['Employer A'] is True
+ page.reload();page.locator('#cloud-signout').wait_for();page.locator('[data-page=admin]').click();assert page.locator('[data-nonrenew="Employer A"]').is_checked()
  page.locator('#real-invite-email').fill('newadmin@example.com');page.locator('#real-invite button').click();page.get_by_text('newadmin@example.com · Admin',exact=False).wait_for()
  print('PASS explicit published-site email redirect, real auth API contract, hidden private UI before verification, server-loaded role, shared report saves, minimized payloads, assignments and invitations')
  page.locator('#cloud-signout').click();page.locator('#cloud-login-form').wait_for();assert page.evaluate('uploads.base === null && !Cloud.member');assert 'employee@example.com' not in page.locator('#app').inner_text();assert page.evaluate('sessionStorage.getItem("big-plan-workspace-session")') is None
- login('viewer@thebigplan.com');assert page.evaluate('role')=='Viewer';assert page.evaluate('uploads.current.length')==1;assert page.evaluate('parents["Employer A"]')=='Recover Care'
+ login('viewer@thebigplan.com');assert page.evaluate('role')=='Viewer';assert page.evaluate('uploads.current.length')==1;assert page.evaluate('parents["Employer A"]')=='Recover Care';assert page.evaluate('nonRenewals["Employer A"]') is True
  page.locator('[data-page=groups]').click();page.locator('[data-parent="Recover Care"]').click();page.locator('.dialog [data-group="Employer A"]').click();assert page.locator('#export').is_disabled();page.locator('#close').click()
  result=page.evaluate('Cloud.rpc("export_contacts",{p_selections:[]}).then(()=>"BAD").catch(e=>e.message)');assert 'Export requires' in result
  page.locator('[data-page=admin]').click();assert page.locator('[data-upload]').count()==0
@@ -84,5 +91,9 @@ with sync_playwright() as p:
  page.goto(f'http://127.0.0.1:{server.server_port}/index.html#access_token=verified-link-token&refresh_token=link-refresh&expires_in=3600');page.locator('#cloud-signout').wait_for();assert '#' not in page.url;assert page.evaluate('Cloud.member.role')=='viewer'
  page.goto(f'http://127.0.0.1:{server.server_port}/index.html#access_token=rejected&refresh_token=bad&expires_in=3600');page.locator('#cloud-login-form').wait_for();assert not page.locator('main').is_visible();assert '#' not in page.url;assert page.evaluate('sessionStorage.getItem("big-plan-workspace-session")') is None
  print('PASS secure-link callback is verified against the auth service, tokens removed from URL, and invalid callbacks are cleared/denied')
+ active['email']='israelmamann@gmail.com';state.pop('nonRenewals');page.goto(f'http://127.0.0.1:{server.server_port}/index.html#access_token=verified-link-token&refresh_token=link-refresh&expires_in=3600');page.locator('#cloud-signout').wait_for();page.locator('[data-page=admin]').click()
+ assert page.locator('[data-nonrenew="Employer A"]').is_disabled();assert page.locator('a[href="./renewal-setup/"]').is_visible()
+ page.locator('#assignment-search').fill('Employer');assert page.locator('[data-nonrenew="Employer A"]').is_disabled()
+ print('PASS shared renewal decisions survive reload, assignment updates and viewer login; missing database migration disables saves with setup guidance')
  page.set_viewport_size({'width':390,'height':844});assert not page.evaluate('document.documentElement.scrollWidth>innerWidth')
  assert not errors,errors;print('PASS responsive sign-in and no browser errors (mock service; live email and Supabase project still require verification)');b.close()

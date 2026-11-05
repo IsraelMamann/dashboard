@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 const db=new PGlite();
 await db.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE SCHEMA auth; CREATE TABLE auth.users(id uuid PRIMARY KEY,email text UNIQUE,encrypted_password text DEFAULT '',email_confirmed_at timestamptz); CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$; CREATE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE AS $$SELECT coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb$$; GRANT USAGE ON SCHEMA auth TO authenticated; GRANT EXECUTE ON FUNCTION auth.uid(),auth.jwt() TO authenticated;`);
 const schema=await readFile(new URL('../schema.sql',import.meta.url),'utf8');await db.exec(schema);await db.exec(schema);
+// Upgrade an existing workspace too, after the test has saved reports and assignments.
+const migration=await readFile(new URL('../nonrenewal-migration.sql',import.meta.url),'utf8');
 const ids={owner:'00000000-0000-0000-0000-000000000001',viewer:'00000000-0000-0000-0000-000000000002',manager:'00000000-0000-0000-0000-000000000003',pending:'00000000-0000-0000-0000-000000000004',invited:'00000000-0000-0000-0000-000000000005'};
 async function user(id,email,confirmed=true){await db.query('INSERT INTO auth.users(id,email,email_confirmed_at) VALUES($1,$2,$3)',[id,email,confirmed?new Date().toISOString():null])}
 async function as(who,email){await db.exec('RESET ROLE');await db.query("SELECT set_config('request.jwt.claim.sub',$1,false),set_config('request.jwt.claims',$2,false)",[ids[who],JSON.stringify({email})]);await db.exec('SET ROLE authenticated')}
@@ -24,6 +26,22 @@ let report=(await db.query('SELECT public.load_dashboard() AS data')).rows[0].da
 await db.query('SELECT public.save_report($1,$2,$3)', ['current','2026-11-04',JSON.stringify([{...row(),lives:5}])]);assert.equal((await db.query('SELECT count(*)::int n FROM public.report_snapshots')).rows[0].n,2);
 await fails(()=>db.query('SELECT public.save_report($1,$2,$3)',['current','2026-11-05',JSON.stringify([{...row(),lives:0}])]),/positive whole/);
 await db.query('SELECT public.save_assignments($1)',[JSON.stringify([{employer_account:'Employer A',account_manager:'Jordan',parent_account:'Recover Care'}])]);await fails(()=>db.query('SELECT public.save_assignments($1)',[JSON.stringify([{employer_account:'Employer A',account_manager:'Changed',parent_account:''},{employer_account:'Unknown',account_manager:'Bad',parent_account:''}])]),/Unknown employer/);assert.equal((await db.query('SELECT account_manager FROM public.employer_assignments')).rows[0].account_manager,'Jordan');
+await db.exec('RESET ROLE');
+await db.exec('ALTER TABLE public.employer_assignments DROP COLUMN not_renewing');
+await db.exec(migration);await db.exec(migration);
+await as('owner','israelmamann@gmail.com');
+const revisionBefore=(await db.query('SELECT public.dashboard_revision() data')).rows[0].data.revision;
+await db.query("SELECT public.set_nonrenewal('Employer A',true)");
+report=(await db.query('SELECT public.load_dashboard() data')).rows[0].data;
+assert.equal(report.nonRenewals['Employer A'],true);assert.equal(report.assignments['Employer A'],'Jordan');assert.equal(report.parents['Employer A'],'Recover Care');assert.equal(report.baseline.length,1);assert.equal(report.current[0].lives,5);assert(report.revision>revisionBefore);
+await db.query('SELECT public.save_assignments($1)',[JSON.stringify([{employer_account:'Employer A',account_manager:'Jordan',parent_account:'Recover Care'}])]);
+assert.equal((await db.query('SELECT public.load_dashboard() data')).rows[0].data.nonRenewals['Employer A'],true);
+await fails(()=>db.query("SELECT public.set_nonrenewal('Unknown',true)"),/Unknown employer/);
+await fails(()=>db.query("SELECT public.set_nonrenewal('Employer A',null)"),/decision is required/);
+await db.exec('RESET ROLE');await db.exec('SET ROLE anon');await fails(()=>db.query("SELECT public.set_nonrenewal('Employer A',false)"),/permission denied/);
+for(const who of ['viewer','manager']){await as(who,who+'@thebigplan.com');await fails(()=>db.query("SELECT public.set_nonrenewal('Employer A',false)"),/Only admins/);assert.equal((await db.query('SELECT public.load_dashboard() data')).rows[0].data.nonRenewals['Employer A'],true);await fails(()=>db.query("UPDATE public.employer_assignments SET not_renewing=false"),/permission denied/)}
+await as('owner','israelmamann@gmail.com');await db.query("SELECT public.set_nonrenewal('Employer A',false)");assert.equal((await db.query('SELECT public.load_dashboard() data')).rows[0].data.nonRenewals['Employer A'],false);
+console.log('PASS rerunnable renewal-decision migration, shared admin-only flags, revision updates, unchanged reports/mappings, preserved flags on assignment imports, unknown-employer rejection and restoring expectations');
 await db.query("SELECT public.invite_member('invited@example.net','admin')");await db.exec('RESET ROLE');await user(ids.invited,'invited@example.net');await as('invited','invited@example.net');await db.query('SELECT public.ensure_membership()');assert.equal((await db.query('SELECT public.app_role() role')).rows[0].role,'admin');
 console.log('PASS atomic shared snapshot replacement, database data allowlist, privacy stripping, employer assignment validation, invited external admin and owner protection');
 await as('viewer','viewer@thebigplan.com');report=(await db.query('SELECT public.load_dashboard() data')).rows[0].data;assert.equal(report.current[0].lives,5);assert.equal(report.members.length,0);assert.equal((await db.query('SELECT count(*)::int n FROM public.members')).rows[0].n,1);

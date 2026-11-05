@@ -1,0 +1,38 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>The Big Plan · Database setup</title><style>body{font:17px/1.6 system-ui,sans-serif;background:#f7f5ed;color:#161310;max-width:850px;margin:50px auto;padding:24px}h1{color:#c33067;font-size:40px;line-height:1.1}button,a.action{display:inline-block;font:600 17px system-ui;padding:15px 22px;border:0;background:#c33067;color:white;text-decoration:none;margin:10px 12px 12px 0;cursor:pointer}a.action{background:#191715}textarea{box-sizing:border-box;width:100%;height:330px;font:12px/1.5 monospace;padding:16px;border:1px solid #c9c0b1;background:#fff}#status{min-height:30px;color:#214c44;font-weight:600}li{margin-bottom:14px}small{color:#6f6257}</style></head><body><small>THE BIG PLAN · RENEWAL DECISIONS · DATABASE UPDATE</small><h1>Enable renewal decisions.</h1><p>Do these steps once, in your own Supabase project.</p><ol><li>Click <b>Copy database script</b> below.</li><li>Open the <b>Supabase SQL Editor</b>, then click <b>New query</b> (or the + button).</li><li>Click inside the query editor and paste with <b>Ctrl+V</b> on Windows or <b>Command+V</b> on Mac.</li><li>Click <b>Run</b>. A successful result says <b>Success. No rows returned.</b></li></ol><button id="copy">Copy database script</button><a class="action" href="https://supabase.com/dashboard/project/grvcfnholcbopeczbwiz/sql" target="_blank" rel="noopener">Open Supabase SQL Editor ↗</a><div id="status" role="status"></div><details><summary>View the SQL script or copy it manually</summary><textarea id="sql" readonly aria-label="Database setup SQL">begin;
+alter table public.employer_assignments add column if not exists not_renewing boolean not null default false;
+create or replace function public.set_nonrenewal(p_employer text,p_not_renewing boolean) returns void
+language plpgsql security definer set search_path=&#x27;&#x27; as $$
+begin
+ if public.app_role() is distinct from &#x27;admin&#x27; then raise exception &#x27;Only admins can change renewal decisions&#x27; using errcode=&#x27;42501&#x27;; end if;
+ if p_not_renewing is null then raise exception &#x27;A renewal decision is required&#x27;; end if;
+ if not exists(select 1 from public.report_snapshots s cross join lateral jsonb_array_elements(s.rows) r where r-&gt;&gt;&#x27;group&#x27;=p_employer) then raise exception &#x27;Unknown employer&#x27;; end if;
+ insert into public.employer_assignments(employer_account,not_renewing) values(p_employer,p_not_renewing)
+ on conflict(employer_account) do update set not_renewing=excluded.not_renewing,updated_at=now();
+end $$;
+
+create or replace function public.load_dashboard() returns jsonb
+language plpgsql security invoker set search_path=&#x27;&#x27; as $$
+declare result jsonb;
+begin
+ if public.app_role() is null then raise exception &#x27;Verified workspace membership required&#x27; using errcode=&#x27;42501&#x27;; end if;
+ select jsonb_build_object(
+  &#x27;revision&#x27;,(select revision from public.workspace_state where id=1),
+  &#x27;baseline&#x27;,(select rows from public.report_snapshots where kind=&#x27;baseline&#x27; order by created_at desc limit 1),
+  &#x27;current&#x27;,(select rows from public.report_snapshots where kind=&#x27;current&#x27; order by snapshot_date desc,created_at desc limit 1),
+  &#x27;history&#x27;,coalesce((select jsonb_agg(jsonb_build_object(&#x27;date&#x27;,snapshot_date,&#x27;n&#x27;,employee_count,&#x27;uploadedAt&#x27;,created_at,&#x27;name&#x27;,&#x27;Shared daily snapshot&#x27;) order by snapshot_date) from public.report_snapshots where kind=&#x27;current&#x27;),&#x27;[]&#x27;),
+  &#x27;assignments&#x27;,coalesce((select jsonb_object_agg(employer_account,account_manager) from public.employer_assignments),&#x27;{}&#x27;),
+  &#x27;nonRenewals&#x27;,coalesce((select jsonb_object_agg(employer_account,not_renewing) from public.employer_assignments),&#x27;{}&#x27;),
+  &#x27;parents&#x27;,coalesce((select jsonb_object_agg(employer_account,parent_account) from public.employer_assignments),&#x27;{}&#x27;),
+  &#x27;member&#x27;,(select to_jsonb(m) from public.members m where id=auth.uid()),
+  &#x27;members&#x27;,case when public.app_role()=&#x27;admin&#x27; then coalesce((select jsonb_agg(to_jsonb(m) order by m.email) from public.members m),&#x27;[]&#x27;) else &#x27;[]&#x27;::jsonb end,
+  &#x27;invitations&#x27;,case when public.app_role()=&#x27;admin&#x27; then coalesce((select jsonb_agg(to_jsonb(i) order by i.created_at desc) from public.access_invitations i where i.accepted_at is null and i.expires_at&gt;now()),&#x27;[]&#x27;) else &#x27;[]&#x27;::jsonb end
+ ) into result;
+ return result;
+end
+$$;
+
+
+revoke all on function public.set_nonrenewal(text,boolean) from public,anon,authenticated;
+grant execute on function public.set_nonrenewal(text,boolean) to authenticated;
+commit;
+</textarea></details><p><small>This adds the shared Not renewing flag and an admin-only save function. Existing reports, account managers and parent mappings are preserved. No employee upload or email settings changes are needed.</small></p><script>document.querySelector('#copy').onclick=async()=>{const text=document.querySelector('#sql').value;try{await navigator.clipboard.writeText(text);document.querySelector('#status').textContent='Copied! Open the Supabase SQL Editor, start a new query, paste, and click Run.'}catch{document.querySelector('details').open=true;document.querySelector('#sql').focus();document.querySelector('#sql').select();const copied=document.execCommand('copy');document.querySelector('#status').textContent=copied?'Copied! Paste into Supabase SQL Editor.':'The script is selected. Press Ctrl+C or Command+C, then paste into Supabase.'}};</script></body></html>

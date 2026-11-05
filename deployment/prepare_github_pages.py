@@ -25,6 +25,8 @@ if workspace:
 else:files['index.html']=preview
 setup=ROOT/'setup'/'index.html'
 if setup.exists():files['setup/index.html']=setup.read_text()
+renewal_setup=ROOT/'renewal-setup'/'index.html'
+if renewal_setup.exists():files['renewal-setup/index.html']=renewal_setup.read_text()
 with tempfile.TemporaryDirectory(prefix='big-plan-publish-') as temp:
  env={**os.environ,'GIT_INDEX_FILE':str(Path(temp)/'release.index')}
  git('read-tree','--empty',env=env)

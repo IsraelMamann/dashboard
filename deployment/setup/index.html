@@ -27,6 +27,8 @@ create table if not exists public.employer_assignments (
  updated_at timestamptz not null default now()
 );
 
+alter table public.employer_assignments add column if not exists not_renewing boolean not null default false;
+
 create table if not exists public.workspace_state (id integer primary key check(id=1),revision bigint not null default 1);
 insert into public.workspace_state(id,revision) values(1,1) on conflict(id) do nothing;
 create or replace function public.bump_workspace_revision() returns trigger language plpgsql security definer set search_path=&#x27;&#x27; as $$
@@ -171,6 +173,16 @@ begin
 end
 $$;
 
+create or replace function public.set_nonrenewal(p_employer text,p_not_renewing boolean) returns void
+language plpgsql security definer set search_path=&#x27;&#x27; as $$
+begin
+ if public.app_role() is distinct from &#x27;admin&#x27; then raise exception &#x27;Only admins can change renewal decisions&#x27; using errcode=&#x27;42501&#x27;; end if;
+ if p_not_renewing is null then raise exception &#x27;A renewal decision is required&#x27;; end if;
+ if not exists(select 1 from public.report_snapshots s cross join lateral jsonb_array_elements(s.rows) r where r-&gt;&gt;&#x27;group&#x27;=p_employer) then raise exception &#x27;Unknown employer&#x27;; end if;
+ insert into public.employer_assignments(employer_account,not_renewing) values(p_employer,p_not_renewing)
+ on conflict(employer_account) do update set not_renewing=excluded.not_renewing,updated_at=now();
+end $$;
+
 create or replace function public.set_member_role(p_member_id uuid,p_role text) returns void
 language plpgsql security definer set search_path=&#x27;&#x27; as $$
 begin
@@ -213,6 +225,7 @@ begin
   &#x27;current&#x27;,(select rows from public.report_snapshots where kind=&#x27;current&#x27; order by snapshot_date desc,created_at desc limit 1),
   &#x27;history&#x27;,coalesce((select jsonb_agg(jsonb_build_object(&#x27;date&#x27;,snapshot_date,&#x27;n&#x27;,employee_count,&#x27;uploadedAt&#x27;,created_at,&#x27;name&#x27;,&#x27;Shared daily snapshot&#x27;) order by snapshot_date) from public.report_snapshots where kind=&#x27;current&#x27;),&#x27;[]&#x27;),
   &#x27;assignments&#x27;,coalesce((select jsonb_object_agg(employer_account,account_manager) from public.employer_assignments),&#x27;{}&#x27;),
+  &#x27;nonRenewals&#x27;,coalesce((select jsonb_object_agg(employer_account,not_renewing) from public.employer_assignments),&#x27;{}&#x27;),
   &#x27;parents&#x27;,coalesce((select jsonb_object_agg(employer_account,parent_account) from public.employer_assignments),&#x27;{}&#x27;),
   &#x27;member&#x27;,(select to_jsonb(m) from public.members m where id=auth.uid()),
   &#x27;members&#x27;,case when public.app_role()=&#x27;admin&#x27; then coalesce((select jsonb_agg(to_jsonb(m) order by m.email) from public.members m),&#x27;[]&#x27;) else &#x27;[]&#x27;::jsonb end,
@@ -244,7 +257,7 @@ $$;
 
 revoke all on function public.normalize_report(jsonb) from public,anon,authenticated;
 revoke all on function public.enrollment_member_signup() from public,anon,authenticated;
-revoke all on function public.app_role(),public.dashboard_revision(),public.ensure_membership(), public.save_report(text,date,jsonb),public.save_assignments(jsonb),public.set_member_role(uuid,text),public.invite_member(text,text),public.revoke_invitation(text),public.load_dashboard(),public.export_contacts(jsonb) from public,anon,authenticated;
-grant execute on function public.app_role(),public.dashboard_revision(),public.ensure_membership(),public.save_report(text,date,jsonb),public.save_assignments(jsonb),public.set_member_role(uuid,text),public.invite_member(text,text),public.revoke_invitation(text),public.load_dashboard(),public.export_contacts(jsonb) to authenticated;
+revoke all on function public.set_nonrenewal(text,boolean),public.app_role(),public.dashboard_revision(),public.ensure_membership(), public.save_report(text,date,jsonb),public.save_assignments(jsonb),public.set_member_role(uuid,text),public.invite_member(text,text),public.revoke_invitation(text),public.load_dashboard(),public.export_contacts(jsonb) from public,anon,authenticated;
+grant execute on function public.set_nonrenewal(text,boolean),public.app_role(),public.dashboard_revision(),public.ensure_membership(),public.save_report(text,date,jsonb),public.save_assignments(jsonb),public.set_member_role(uuid,text),public.invite_member(text,text),public.revoke_invitation(text),public.load_dashboard(),public.export_contacts(jsonb) to authenticated;
 commit;
 </textarea></details><p><small>This creates empty tables, verified-email membership, permissions and report-storage functions. It does not upload employee data or require you to share a database password. If Supabase warns about DROP statements, these replace only this app's named policies and triggers; report records are preserved.</small></p><script>document.querySelector('#copy').onclick=async()=>{const text=document.querySelector('#sql').value;try{await navigator.clipboard.writeText(text);document.querySelector('#status').textContent='Copied! Open the Supabase SQL Editor, start a new query, paste, and click Run.'}catch{document.querySelector('details').open=true;document.querySelector('#sql').focus();document.querySelector('#sql').select();const copied=document.execCommand('copy');document.querySelector('#status').textContent=copied?'Copied! Paste into Supabase SQL Editor.':'The script is selected. Press Ctrl+C or Command+C, then paste into Supabase.'}};</script></body></html>
