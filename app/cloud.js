@@ -21,12 +21,19 @@ function cloudConfig(){
 }
 function cloudRedirectURL(){const u=new URL(window.BIG_PLAN_CONFIG?.siteUrl||'https://israelmamann.github.io/dashboard/');if(u.protocol!=='https:'||u.username||u.password)throw Error('The website sign-in return address is invalid.');u.hash='';u.search='';return u.href}
 function cloudMessage(message){let e=$('#cloud-message');if(!e){e=document.createElement('div');e.id='cloud-message';e.className='banner';e.setAttribute('role','status');$('main').prepend(e)}e.textContent=message}
+function cloudOpening(message='Checking your saved sign-in and loading shared reports…',retry=false){
+ const logo=$('.brand img')?.src;
+ $('#auth-gate').innerHTML=`<div class="auth-box" aria-busy="${!retry}"><img class="auth-logo" alt="The Big Plan" src="${logo}"><div class="eyebrow">YOUR ENROLLMENT WORKSPACE</div><h1>Opening your dashboard.</h1><p id="auth-message" role="status">${esc(message)}</p>${retry?'<button id="cloud-retry" class="primary">Try again</button>':''}</div>`;
+ document.body.classList.remove('authenticated');$('#auth-gate').hidden=false;
+ if($('#cloud-retry'))$('#cloud-retry').onclick=()=>Cloud.resume();
+}
+function cloudTokenSubject(token){try{const part=token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');return JSON.parse(atob(part.padEnd(Math.ceil(part.length/4)*4,'='))).sub||null}catch{return null}}
 function cloudLogin(message=''){
  const c=cloudConfig(),logo=$('.brand img')?.src;
  $('#auth-gate').innerHTML=`<div class="auth-box"><img class="auth-logo" alt="The Big Plan" src="${logo}"><div class="eyebrow">PRIVATE ENROLLMENT WORKSPACE</div><h1>Sign in. Get the big picture.</h1><p>Verify your email to access your team's shared reports. This browser will keep you signed in until you sign out.</p>${!c?'<div class="banner">The private workspace is prepared, but the Supabase connection has not been configured yet.</div><a href="./demo/">Return to the fictional preview</a>':`<form id="cloud-login-form"><label>Email address<input id="cloud-email" type="email" autocomplete="email" required placeholder="you@thebigplan.com" value="${esc(Cloud.authEmail)}"></label><button class="primary">Send sign-in email</button></form>${Cloud.lastCodeAt?`<form id="cloud-verify-form"><label>Verification code<input id="cloud-code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6,10}" minlength="6" maxlength="10" required placeholder="Code from your email"></label><button class="primary">Verify and sign in</button></form><div class="sub">Sign-in email requested for ${esc(Cloud.authEmail)}. Enter its code above, or follow its secure sign-in link. Check your inbox and spam folder.</div>`:''}<p class="sub">Verified @thebigplan.com users join as viewers. Other addresses require an administrator invitation. Never enter a database password here.</p>`}<div id="auth-message" class="banner" role="status" ${message?'':'hidden'}>${esc(message)}</div></div>`;
  document.body.classList.remove('authenticated');$('#auth-gate').hidden=false;
  if($('#cloud-login-form'))$('#cloud-login-form').onsubmit=async e=>{e.preventDefault();const mail=$('#cloud-email').value.trim().toLowerCase();if(Cloud.lastRequestAt&&Date.now()-Cloud.lastRequestAt<60000&&Cloud.authEmail===mail){cloudAuthMessage('Please wait a minute before requesting another code.');return}Cloud.authEmail=mail;Cloud.lastRequestAt=Date.now();$('#cloud-verify-form')?.remove();await cloudAuthAction(e.target,async()=>{await cloudAuth('/otp?redirect_to='+encodeURIComponent(cloudRedirectURL()),{email:mail,create_user:true});Cloud.lastCodeAt=Date.now();cloudLogin('If this email is approved, a sign-in email has been sent. Use the code or secure link in that message.');$('#cloud-code')?.focus()})};
- if($('#cloud-verify-form'))$('#cloud-verify-form').onsubmit=async e=>{e.preventDefault();await cloudAuthAction(e.target,async()=>{const data=await cloudAuth('/verify',{email:Cloud.authEmail,token:$('#cloud-code').value.trim(),type:'email'});Cloud.epoch++;Cloud.acceptSession(data);await Cloud.load(true)})};
+ if($('#cloud-verify-form'))$('#cloud-verify-form').onsubmit=async e=>{e.preventDefault();await cloudAuthAction(e.target,async()=>{const data=await cloudAuth('/verify',{email:Cloud.authEmail,token:$('#cloud-code').value.trim(),type:'email'});Cloud.acceptSession(data);await Cloud.resume()})};
 }
 function cloudAuthMessage(message){const e=$('#auth-message');if(e){e.hidden=false;e.textContent=message}}
 async function cloudAuthAction(form,fn){form.querySelectorAll('button,input').forEach(e=>e.disabled=true);try{await fn()}catch(e){cloudAuthMessage(e.message)}finally{form.querySelectorAll('button,input').forEach(e=>e.disabled=false)}}
@@ -66,11 +73,24 @@ Cloud.freshToken=async function(){
  return Cloud.refreshing;
 };
 Cloud.rpc=async function(name,args={}){const c=cloudConfig(),token=await Cloud.freshToken();const response=await fetch(c.url+'/rest/v1/rpc/'+encodeURIComponent(name),{method:'POST',headers:{apikey:c.key,Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify(args),cache:'no-store'});const data=await response.json().catch(()=>null);if(!response.ok){if(response.status===401){Cloud.lock('Please sign in again.');throw Error('Your session is no longer valid.')}const error=Error(data?.message||'The shared workspace request failed.');error.status=response.status;throw error}return data};
-Cloud.lock=function(message=''){Cloud.epoch++;Cloud.authEmail='';Cloud.lastCodeAt=0;Cloud.lastRequestAt=0;if(tvActive)tvStop();Cloud.session=null;Cloud.member=null;Cloud.members=[];Cloud.invitations=[];Cloud.revision=null;Cloud.fieldAudit=null;Cloud.refreshing=null;localStorage.removeItem(SESSION_KEY);sessionStorage.removeItem(SESSION_KEY);uploads={base:null,current:null};history=[];assignment={};parents={};nonRenewals={};users=[];admins=[];role='Viewer';mode='uploads';$('#app').innerHTML='';$('#modal').classList.add('hidden');$('#modal').innerHTML='';$('#cloud-toolbar')?.remove();cloudLogin(message)};
-Cloud.load=async function(initial=false){
+Cloud.lock=function(message=''){Cloud.epoch++;Cloud.authEmail='';Cloud.lastCodeAt=0;Cloud.lastRequestAt=0;if(tvActive)tvStop();Cloud.session=null;Cloud.member=null;Cloud.members=[];Cloud.invitations=[];Cloud.revision=null;Cloud.fieldAudit=null;Cloud.refreshing=null;Cloud.loading=null;localStorage.removeItem(SESSION_KEY);sessionStorage.removeItem(SESSION_KEY);uploads={base:null,current:null};history=[];assignment={};parents={};nonRenewals={};users=[];admins=[];role='Viewer';mode='uploads';$('#app').innerHTML='';$('#modal').classList.add('hidden');$('#modal').innerHTML='';$('#cloud-toolbar')?.remove();cloudLogin(message)};
+Cloud.load=function(initial=false){
  const epoch=Cloud.epoch;
- let d;if(initial){await cloudAuth('/user',undefined,await Cloud.freshToken());try{d=await Cloud.rpc('load_dashboard')}catch{await Cloud.rpc('ensure_membership')}}
- d=d||await Cloud.rpc('load_dashboard');if(epoch!==Cloud.epoch)return;if(!d?.member||!ROLE_LABEL[d.member.role])throw Error('Your verified email does not have access to this workspace.');
+ if(initial&&Cloud.loading?.initial&&Cloud.loading.epoch===epoch)return Cloud.loading.promise;
+ const pending={epoch,initial};
+ pending.promise=Cloud.loadData(initial,epoch).finally(()=>{if(Cloud.loading===pending)Cloud.loading=null});
+ Cloud.loading=pending;return pending.promise;
+};
+Cloud.loadData=async function(initial,epoch){
+ let d,user;
+ if(initial){
+  const token=await Cloud.freshToken();
+  const read=async()=>{try{return await Cloud.rpc('load_dashboard')}catch(e){if(e.status!==403)throw e;await Cloud.rpc('ensure_membership');return Cloud.rpc('load_dashboard')}};
+  // Both endpoints enforce auth. Keep the gate closed until identity and workspace checks pass.
+  [user,d]=await Promise.all([cloudAuth('/user',undefined,token),read()]);
+ }else d=await Cloud.rpc('load_dashboard');
+ if(epoch!==Cloud.epoch)return;
+ if(!d?.member||!ROLE_LABEL[d.member.role]||(user?.id&&user.id!==d.member.id)||(user?.email&&user.email.toLowerCase()!==d.member.email.toLowerCase())){const error=Error('Your verified email does not have access to this workspace.');error.status=403;throw error}
  Cloud.fieldAudit={checkedAt:new Date().toISOString(),baseline:storedFieldAudit(d.baseline),current:storedFieldAudit(d.current)};
  const safeRows=rows=>rows===null?null:rows.map(r=>Object.fromEntries(CLOUD_ROW_KEYS.map(k=>[k,r[k]??null])));
  uploads={base:safeRows(d.baseline),current:safeRows(d.current)};history=d.history||[];assignment=d.assignments||{};parents=d.parents||{};nonRenewals=d.nonRenewals||{};Cloud.supportsNonRenewals=Object.hasOwn(d,'nonRenewals');Cloud.member=d.member;Cloud.members=d.members||[];Cloud.invitations=d.invitations||[];Cloud.revision=d.revision;
@@ -105,8 +125,33 @@ Cloud.poll=async function(){if(!Cloud.member||Cloud.busy||document.hidden)return
 setInterval(()=>Cloud.poll(),60000);
 window.addEventListener('focus',()=>Cloud.poll());
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)Cloud.poll()});
-Cloud.resume=async()=>{Cloud.epoch++;cloudLogin();if(!cloudConfig())return;try{const callback=new URLSearchParams(window.location.hash.slice(1));if(callback.has('access_token')||callback.has('error_description')){window.history.replaceState(null,'',window.location.pathname+window.location.search);if(callback.has('error_description'))throw Error(callback.get('error_description'));Cloud.acceptSession({access_token:callback.get('access_token'),refresh_token:callback.get('refresh_token'),expires_in:Number(callback.get('expires_in'))||3600,expires_at:Number(callback.get('expires_at'))||undefined});await Cloud.load(true);return}const stored=Cloud.readSession();if(stored?.accessToken&&stored?.refreshToken){Cloud.session=stored;await Cloud.load(true)}}catch(e){if([400,401,403].includes(e.status)||e instanceof SyntaxError||!Cloud.session)Cloud.lock(e.message);else cloudLogin('Could not reconnect. Your sign-in is saved; refresh this page to try again.')}};
-// Signing out clears remembered access in every open tab. New credentials are verified before showing data.
-window.addEventListener('storage',e=>{if(e.storageArea!==localStorage||(e.key!==SESSION_KEY&&e.key!==null))return;if(!localStorage.getItem(SESSION_KEY)){if(Cloud.session)Cloud.lock('You signed out in another tab.')}else Cloud.resume()});
+Cloud.resume=async()=>{
+ const epoch=++Cloud.epoch;
+ try{
+  if(!cloudConfig()){cloudLogin();return}
+  const callback=new URLSearchParams(window.location.hash.slice(1));
+  if(callback.has('access_token')||callback.has('error_description')){
+   window.history.replaceState(null,'',window.location.pathname+window.location.search);
+   if(callback.has('error_description'))throw Error(callback.get('error_description'));
+   Cloud.acceptSession({access_token:callback.get('access_token'),refresh_token:callback.get('refresh_token'),expires_in:Number(callback.get('expires_in'))||3600,expires_at:Number(callback.get('expires_at'))||undefined});
+   cloudOpening();await Cloud.load(true);return;
+  }
+  const stored=Cloud.readSession();
+  if(stored){Cloud.session=stored;cloudOpening();await Cloud.load(true)}else cloudLogin();
+ }catch(e){
+  if(epoch!==Cloud.epoch)return;
+  if([400,401,403].includes(e.status)||e instanceof SyntaxError||!Cloud.session)Cloud.lock(e.message);
+  else cloudOpening('Could not reconnect. Your sign-in is saved; try again to load your reports.',true);
+ }
+};
+// A same-user token rotation updates auth in place. It must not reopen the login gate or reload reports.
+// The JWT subject only chooses whether to reuse an already verified screen; server role/data checks still run.
+Cloud.syncSession=function(){
+ let saved;try{saved=Cloud.readSession()}catch{return Cloud.resume()}
+ if(!saved){if(Cloud.session)Cloud.lock('You signed out in another tab.');return}
+ if(Cloud.member&&document.body.classList.contains('authenticated')&&cloudTokenSubject(saved.accessToken)===Cloud.member.id){Cloud.session=saved;return Cloud.poll()}
+ return Cloud.resume();
+};
+window.addEventListener('storage',e=>{if(e.storageArea===localStorage&&(e.key===SESSION_KEY||e.key===null))Cloud.syncSession()});
 window.addEventListener('hashchange',()=>{if(window.location.hash.includes('access_token=')||window.location.hash.includes('error_description='))Cloud.resume()});
 Cloud.resume();
