@@ -15,7 +15,8 @@ def values(table,button):
   if kind=='name':value=cell.locator('b').inner_text()
   elif kind=='manager':value=cell.locator('.sub').inner_text()
   else:value=cell.inner_text().strip()
-  if kind in ['enrolled','lives']:value=value.split('/')[kind=='lives'].strip() if '/' in value else value
+  if kind in ['enrolled','lives']:
+   metric=cell.locator('.lives-count' if kind=='lives' else '.enrolled-count');value=metric.inner_text() if metric.count() else '—'
   if not value or value=='—':value=None
   elif kind in ['number','enrolled','lives']:
    found=re.search(r'[-+]?\d+(?:\.\d+)?',value.replace(',',''));value=float(found[0]) if found else None

@@ -21,7 +21,7 @@ with sync_playwright() as p:
  page.evaluate("page='managers';render()")
  stats=page.evaluate('(()=>{const s=managerStats(model());return {denominator:s.denominator,rows:s.rows.map(r=>({name:r.name,starting:r.starting,current:r.current,delta:r.delta,portfolio:r.portfolio.length,waiting:r.waiting.length}))}})()')
  assert stats=={'denominator':6,'rows':[{'name':'Jordan','starting':2,'current':3,'delta':1,'portfolio':1,'waiting':0},{'name':'Taylor','starting':4,'current':5,'delta':1,'portfolio':1,'waiting':0}]},stats
- assert page.locator('#manager-enrollment-context tbody tr').all_inner_texts()==['Total enrolled · includes known non-renewals\t4 / 36\t3 / 18','Chosen not to renew · excluded from expectations\t2 / 30\t1 / 10','Included in manager expectations\t2 / 6\t2 / 8']
+ assert [' '.join(row.split()) for row in page.locator('#manager-enrollment-context tbody tr').all_inner_texts()]==['Total enrolled · includes known non-renewals 4 employees 36 lives 3 employees 18 lives','Chosen not to renew · excluded from expectations 2 employees 30 lives 1 employee 10 lives','Included in manager expectations 2 employees 6 lives 2 employees 8 lives']
  assert page.locator('#nonrenewal-accounts tbody tr').count()==3
  assert page.locator('#renewal-employer-lives tbody tr').count()==2
  assert page.locator('#growth-ranking tbody tr').count()==2
@@ -29,11 +29,11 @@ with sync_playwright() as p:
  page.locator('[data-followup="Jordan"]').click();assert page.locator('.dialog tbody tr').count()==0;page.locator('#close').click()
  page.locator('[data-filter=renewalDecision]').select_option('expected')
  assert page.locator('#nonrenewal-accounts tbody tr').count()==3
- assert '4 / 36' in page.locator('#manager-enrollment-context tbody tr').first.inner_text()
+ assert '4 employees\n36 lives' in page.locator('#manager-enrollment-context tbody tr').first.inner_text()
  page.locator('[data-filter=manager]').select_option('Jordan')
  assert page.locator('#nonrenewal-accounts tbody tr').count()==1
  assert page.evaluate('managerStats(model()).denominator')==6
- assert '2 / 12' in page.locator('#manager-enrollment-context tbody tr').first.inner_text()
+ assert '2 employees\n12 lives' in page.locator('#manager-enrollment-context tbody tr').first.inner_text()
  page.locator('[data-filter=renewalDecision]').select_option('excluded')
  assert page.locator('#growth-ranking tbody tr').count()==0
  assert page.locator('#nonrenewal-accounts tbody tr').count()==1

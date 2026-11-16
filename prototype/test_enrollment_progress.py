@@ -23,18 +23,18 @@ with sync_playwright() as p:
  assert page.locator('#renewal-group-progress .enrollment-donut-value small').all_inner_texts()==['50.0%','25.0%','25.0%']
  assert page.locator('#renewal-employee-progress .enrollment-donut-value b').all_inner_texts()==['2','1']
  assert page.locator('#renewal-employee-progress .enrollment-donut-number').text_content()=='66.7%'
- assert '3 employees / 7 lives' in page.locator('#renewal-employee-progress').inner_text()
+ assert '3 employees\n7 lives' in page.locator('#renewal-employee-progress').inner_text()
  assert '@example.test' not in page.locator('.enrollment-charts').inner_text()
  assert 'Returned: 2 (66.7%)' in page.locator('#renewal-employees-desc').text_content()
  # The group comparison intentionally uses active baseline rows, not the Jan 1 cohort.
  assert page.evaluate('model().active.length')==5;assert page.evaluate('model().bench.length')==7
  assert page.locator('.annual-comparison tbody tr').first.locator('td').nth(1).inner_text()=='7'
  row=page.locator('[data-parent="Parent Example"]')
- assert row.locator('td').all_inner_texts()[2:5]==['3 / 6','1 / 2','3 / 7']
+ assert row.locator('td').all_inner_texts()[2:5]==['3 employees\n6 lives','1 employee\n2 lives','3 employees\n7 lives']
  assert row.locator('.enrolled-count').all_inner_texts()==['3','1','3']
- row.click();assert page.locator('.dialog [data-group="A"] td').all_inner_texts()[3:]==['3 / 6','1 / 2','2 / 6'];page.locator('#close').click()
+ row.click();assert page.locator('.dialog [data-group="A"] td').all_inner_texts()[3:]==['3 employees\n6 lives','1 employee\n2 lives','2 employees\n6 lives'];page.locator('#close').click()
  page.evaluate("page='groups';accountView='child';render()")
- assert page.locator('#app [data-group="A"] td').all_inner_texts()[2:5]==['3 / 6','1 / 2','2 / 6']
+ assert page.locator('#app [data-group="A"] td').all_inner_texts()[2:5]==['3 employees\n6 lives','1 employee\n2 lives','2 employees\n6 lives']
  page.evaluate("page='overview';render()")
  page.locator('[data-filter=manager]').select_option('Jordan')
  assert page.locator('#renewal-group-progress .enrollment-donut-value b').all_inner_texts()==['2','0','0']

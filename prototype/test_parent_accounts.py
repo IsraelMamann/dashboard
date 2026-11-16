@@ -28,7 +28,7 @@ with sync_playwright() as p:
  page.locator('[data-page=groups]').click();page.locator('[data-parent="Recover Care"]').wait_for()
  assert page.locator('#app tbody tr').count()==1
  assert '27 locations' in page.locator('[data-parent="Recover Care"]').inner_text()
- assert page.locator('[data-parent="Recover Care"] td').all_inner_texts()[2:5]==['20 / 40','20 / 40','1 / 5']
+ assert page.locator('[data-parent="Recover Care"] td').all_inner_texts()[2:5]==['20 employees\n40 lives','20 employees\n40 lives','1 employee\n5 lives']
  assert page.evaluate('parentRollups(model())[0].cur.length')==21
  assert page.evaluate('lives(parentRollups(model())[0].cur)')==45
  assert page.evaluate('managerStats(model()).denominator')==40

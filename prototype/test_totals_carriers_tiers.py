@@ -16,18 +16,18 @@ with sync_playwright() as p:
  uploads.current=[row('Employer A','a1@example.test',3,'Zeta','gold'),row('Employer A','new-a@example.test',4,'Zeta','gold',500,'TX','APPLICATION_READY'),row('Employer B','b1@example.test',2,'Zeta','silver',500,'TX'),row('Employer B','new-b@example.test',5,'Beta','silver',500,'NY','PAYMENT_READY'),row('Leaving One','c1@example.test',7,'Beta','bronze',500,'NY','STUCK'),row('New Group','new@example.test',6,'Alpha','gold')].map(r=>({...r,effective:'01/01/2027'}));
  mode='uploads';page='managers';filters={};assignment={'Employer A':'Jordan','Employer B':'Jordan','Leaving One':'Taylor','Leaving Two':'Taylor','New Group':'Taylor'};parents={'Employer A':'Shared Parent','Employer B':'Shared Parent'};nonRenewals={'Leaving One':true,'Leaving Two':true};render();
  }''')
- cells=page.locator('#nonrenewal-accounts tfoot td').all_inner_texts();assert cells==['2 / 10','1 / 7'],cells
+ cells=page.locator('#nonrenewal-accounts tfoot td').all_inner_texts();assert cells==['2 employees\n10 lives','1 employee\n7 lives'],cells
  assert 'Total · 2 groups' in page.locator('#nonrenewal-accounts tfoot').inner_text()
- cells=page.locator('#renewal-employer-lives tfoot td').all_inner_texts();assert cells==['3 / 6','4 / 14','2 / 9','+8'],cells
+ cells=page.locator('#renewal-employer-lives tfoot td').all_inner_texts();assert cells==['3 employees\n6 lives','4 employees\n14 lives','2 employees\n9 lives','+8'],cells
  assert 'Total · 2 groups' in page.locator('#renewal-employer-lives tfoot').inner_text()
- page.locator('[data-filter=manager]').select_option('Jordan');assert 'Total · 0 groups' in page.locator('#nonrenewal-accounts tfoot').inner_text();assert page.locator('#renewal-employer-lives tfoot td').all_inner_texts()==['3 / 6','4 / 14','2 / 9','+8']
+ page.locator('[data-filter=manager]').select_option('Jordan');assert 'Total · 0 groups' in page.locator('#nonrenewal-accounts tfoot').inner_text();assert page.locator('#renewal-employer-lives tfoot td').all_inner_texts()==['3 employees\n6 lives','4 employees\n14 lives','2 employees\n9 lives','+8']
  page.locator('#reset').click();page.locator('[data-page=groups]').click()
  assert 'Total · 4 groups' in page.locator('#app tfoot').inner_text(),'Parent rows must count employer locations, not parent names'
- assert '2027 total: 6 employees / 27 lives' in page.locator('#app tfoot').inner_text()
- assert page.locator('#app tfoot td').all_inner_texts()==['4 / 10','3 / 12','3 / 15','25.0%','110.0%']
- page.locator('[data-parent="Shared Parent"]').click();assert 'Total · 2 groups' in page.locator('.dialog tfoot').inner_text();assert page.locator('.dialog tfoot td').all_inner_texts()==['3 / 6','2 / 5','2 / 9'];assert '2027 total: 4 employees / 14 lives' in page.locator('.dialog tfoot').inner_text();page.locator('#close').click()
- page.locator('#account-view').select_option('child');page.locator('#group-search').fill('Employer A');assert 'Total · 1 group' in page.locator('#app tfoot').inner_text();assert '2027 total: 2 employees / 7 lives' in page.locator('#app tfoot').inner_text();assert page.locator('#app tfoot td').all_inner_texts()==['2 / 5','1 / 3','1 / 4','0.0%','40.0%']
- page.locator('#reset').click();page.locator('[data-tab=missing]').click();assert 'Total · 1 group' in page.locator('#app tfoot').inner_text();assert page.locator('#app tfoot td').all_inner_texts()==['1 / 6','0 / 0','0 / 0','—','—']
+ assert '2027 total: 6 employees 27 lives' in ' '.join(page.locator('#app tfoot').inner_text().split())
+ assert page.locator('#app tfoot td').all_inner_texts()==['4 employees\n10 lives','3 employees\n12 lives','3 employees\n15 lives','25.0%','110.0%']
+ page.locator('[data-parent="Shared Parent"]').click();assert 'Total · 2 groups' in page.locator('.dialog tfoot').inner_text();assert page.locator('.dialog tfoot td').all_inner_texts()==['3 employees\n6 lives','2 employees\n5 lives','2 employees\n9 lives'];assert '2027 total: 4 employees 14 lives' in ' '.join(page.locator('.dialog tfoot').inner_text().split());page.locator('#close').click()
+ page.locator('#account-view').select_option('child');page.locator('#group-search').fill('Employer A');assert 'Total · 1 group' in page.locator('#app tfoot').inner_text();assert '2027 total: 2 employees 7 lives' in ' '.join(page.locator('#app tfoot').inner_text().split());assert page.locator('#app tfoot td').all_inner_texts()==['2 employees\n5 lives','1 employee\n3 lives','1 employee\n4 lives','0.0%','40.0%']
+ page.locator('#reset').click();page.locator('[data-tab=missing]').click();assert 'Total · 1 group' in page.locator('#app tfoot').inner_text();assert page.locator('#app tfoot td').all_inner_texts()==['1 employee\n6 lives','0 employees\n0 lives','0 employees\n0 lives','—','—']
  page.evaluate("groupTab='active';accountView='parent';page='overview';render();document.querySelector('#app').insertAdjacentHTML('beforeend','<div id=limited>'+table(model(),1)+'</div>')")
  assert page.locator('#limited tbody tr').count()==1;assert 'Total · 4 groups' in page.locator('#limited tfoot').inner_text();assert 'beyond this preview' in page.locator('#limited tfoot').inner_text()
  print('PASS renewal/nonrenewal totals, both years, child-location counts, combined current enrollment, weighted total growth, filters, missing groups and limited previews')
