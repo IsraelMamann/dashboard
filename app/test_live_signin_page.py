@@ -16,7 +16,7 @@ with sync_playwright() as p:
  assert page.evaluate('parentTable(model()).includes("2027 renewal enrolled/lives")')
  assert page.evaluate('cloudConfig()!==null')
  assert page.evaluate('cloudRedirectURL()')=='https://israelmamann.github.io/dashboard/'
- assert page.evaluate('parentTable(model()).includes("2027 new lives")')
+ assert page.evaluate('parentTable(model()).includes("2027 new enrolled/lives")')
  assert page.evaluate('typeof Cloud.readSession')=='function'
  assert 'keep you signed in' in page.locator('#auth-gate').inner_text()
  assert page.evaluate('typeof isNonRenewing')=='function'

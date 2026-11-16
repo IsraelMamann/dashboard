@@ -28,11 +28,11 @@ with sync_playwright() as p:
  page.locator('[data-page=groups]').click();page.locator('[data-parent="Recover Care"]').wait_for()
  assert page.locator('#app tbody tr').count()==1
  assert '27 locations' in page.locator('[data-parent="Recover Care"]').inner_text()
- assert page.locator('[data-parent="Recover Care"] td').all_inner_texts()[2:5]==['20 / 40','20 / 40','5']
+ assert page.locator('[data-parent="Recover Care"] td').all_inner_texts()[2:5]==['20 / 40','20 / 40','1 / 5']
  assert page.evaluate('parentRollups(model())[0].cur.length')==21
  assert page.evaluate('lives(parentRollups(model())[0].cur)')==45
  assert page.evaluate('managerStats(model()).denominator')==40
- assert page.locator('[data-parent="Recover Care"] .enrolled-count').all_inner_texts()==['20','20']
+ assert page.locator('[data-parent="Recover Care"] .enrolled-count').all_inner_texts()==['20','20','1']
  assert page.evaluate("renewalSplit([{group:'Other',email:'employee0@example.com',lives:3}],model()).newLives")==3
  page.locator('[data-parent="Recover Care"]').click()
  assert page.locator('.dialog tbody tr').count()==27
