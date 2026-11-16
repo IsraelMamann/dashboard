@@ -15,7 +15,7 @@ with sync_playwright() as p:
  assert page.evaluate('paceStats(model()).baseline.available') is False
  assert page.evaluate('model().now.filter(r=>match(r,model())).length')==96
  page.locator('[data-page=insights]').click();assert page.locator('[data-fact=er]').get_by_text('Unavailable',exact=True).count()==1
- assert '2026 · new-group history unavailable' in page.locator('#plan-tier-panel').inner_text()
+ assert '2026 end-of-year · new-group history unavailable' in page.locator('#plan-tier-panel').inner_text()
  page.locator('#launch-tv').click();page.locator('#tv-fullscreen').uncheck();page.locator('#tv-scope').select_option('filtered');page.get_by_role('button',name='Start slideshow').click()
  page.evaluate('tvIndex=1;tvPaint()');assert 'no year-over-year growth is calculated' in page.locator('#tv-content').inner_text()
  page.keyboard.press('Escape');page.locator('[data-filter=type]').select_option('Renewal');page.locator('[data-page=overview]').click();assert page.locator('.annual-comparison tbody tr').first.locator('td').nth(1).inner_text()=='763'

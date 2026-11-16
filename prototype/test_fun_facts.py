@@ -40,9 +40,9 @@ with sync_playwright() as p:
  assert page.evaluate('planTier("Expanded Bronze")')=='expanded_bronze'
  assert page.evaluate('planTier("silver")')=='silver'
  print('2026/2027 ER contribution, full premium, employee age and application size; valid zeroes count and blanks excluded: passed')
- tiers=page.evaluate('(()=>{let s=funFactStats(model());return [tierDistribution(s.before),tierDistribution(s.after)]})()')
+ tiers=page.evaluate('(()=>{let s=tierComparison(model());return [tierDistribution(s.before),tierDistribution(s.after)]})()')
  for dist in tiers:assert math.isclose(sum(r['percentage'] or 0 for r in dist),100)
- assert next(x for x in tiers[0] if x['key']=='unknown')['count']==1
+ assert next(x for x in tiers[0] if x['key']=='unknown')['count']==0
  assert next(x for x in tiers[1] if x['key']=='expanded_bronze')['count']==1
  assert next(x for x in tiers[1] if x['key']=='unknown')['count']==1
  page.locator('#contribution-basis').select_option('allowance');metrics=facts();assert math.isclose(metrics[0]['a']['value'],500/3) and metrics[0]['b']['value']==350
