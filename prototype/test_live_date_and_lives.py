@@ -12,19 +12,23 @@ with sync_playwright() as p:
  assert page.evaluate('paceStats(model()).cutoff')=='2026-11-04'
  assert page.locator('#pace-date').count()==0
  assert 'Nov 4, 2026' in page.locator('#pace-today').inner_text()
+ assert page.evaluate('paceStats(model()).previous')=='2025-11-03'
+ assert 'Nov 3, 2025 · end of day' in page.locator('#pace-comparison thead').text_content()
  page.clock.fast_forward(40000)
  assert page.evaluate('paceStats(model()).cutoff')=='2026-11-05'
  assert 'Nov 5, 2026' in page.locator('#pace-today').inner_text()
- assert page.evaluate('paceStats(model()).previous')=='2025-11-05'
+ assert page.evaluate('paceStats(model()).previous')=='2025-11-04'
  page.locator('#launch-tv').click();assert page.locator('#tv-pace-date').count()==0
  assert 'Nov 5, 2026' in page.locator('#tv-cutoff').inner_text()
+ assert 'Nov 4, 2025 (end of day)' in page.locator('#tv-cutoff').inner_text()
  page.locator('#tv-fullscreen').uncheck();page.get_by_role('button',name='Start slideshow').click()
  page.evaluate('tvIndex=2;tvPaused=true;tvPaint();tvSchedule()')
  assert 'Nov 5, 2026' in page.locator('#tv-content').inner_text()
  page.clock.set_system_time(datetime(2026,11,6,5,0,1,tzinfo=timezone.utc));page.clock.fast_forward(30001)
  assert 'Nov 6, 2026' in page.locator('#tv-content').inner_text()
+ assert 'Nov 5, 2025' in page.locator('#tv-content').inner_text()
  page.keyboard.press('Escape')
- print('New York calendar day, no editable cutoff, automatic overnight dashboard/TV refresh, same date last year: passed')
+ print('New York calendar day, no editable cutoff, automatic overnight dashboard/TV refresh, prior-day cutoff last year: passed')
  page.evaluate('''()=>{
  const r=(g,e,l)=>({group:g,email:e,name:'Example Employee',phone:'202-555-0100',lives:l,status:'ENROLLED',state:'NY',carrier:'Aetna',effective:'01/01/2026',termination:'',consent:'11/01/2025'});
  uploads.base=[r('A','a@example.com',2),r('B','b@example.com',3),r('C','deletec@example.com',4)];

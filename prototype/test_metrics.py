@@ -10,7 +10,7 @@ with sync_playwright() as p:
  page.clock.install(time=datetime(2026,11,4,17,tzinfo=timezone.utc));page.goto(f'http://127.0.0.1:{server.server_port}/index.html');page.locator('#pace-comparison').wait_for()
  page.evaluate('''()=>{
  const r=(group,email,lives,consent,status='ENROLLED')=>({group,email,lives,consent,status,name:'Test Employee',phone:'202-555-0100',state:'NY',carrier:'Aetna',effective:'01/01/2026',termination:status==='TERMINATED'?'08/01/2026':''});
- uploads.base=[r('A','deletea@example.com',1000,'11/04/2025 11:59:59 PM'),r('B','b@example.com',600,'11/05/2025 12:00:00 AM'),r('C','c@example.com',100,''),r('A','d@example.com',50,'10/15/2025 1:00:00 PM','TERMINATED')];
+ uploads.base=[r('A','deletea@example.com',1000,'11/03/2025 11:59:59 PM'),r('B','b@example.com',600,'11/04/2025 12:00:00 AM'),r('C','c@example.com',100,''),r('A','d@example.com',50,'10/15/2025 1:00:00 PM','TERMINATED')];
  uploads.current=[r('A','a@example.com',1400,'11/04/2026 11:59:59 PM','PAYMENT_READY'),r('B','b@example.com',1000,'11/05/2026 12:00:00 AM','APPLICATION_READY'),r('New','new@example.com',200,'11/01/2026 1:00:00 PM','STUCK')];
  assignment={A:'Manager A',B:'Manager B',C:'Manager A',New:'Manager B'};mode='uploads';filters={manager:'',type:'',state:'',carrier:'',search:''};growthBasis='lives';render();
  }''')
@@ -22,12 +22,16 @@ with sync_playwright() as p:
  assert stats['prior']['employees']==2 and stats['prior']['lives']==1050 and stats['prior']['missing']==1,stats
  assert stats['current']['employees']==2 and stats['current']['lives']==1600,stats
  assert stats['fullPrior']==4 and stats['fullCurrent']==3
- print('Weighted/unweighted example, all-groups retention, January terminated baseline, full-company comparison, end-of-day consent cutoffs: passed')
+ print('Weighted/unweighted example, all-groups retention, January terminated baseline, full-company comparison, prior-day consent cutoff includes 11:59 PM and excludes next-day midnight: passed')
  assert page.locator('#pace-date').count()==0
  page.clock.set_system_time(datetime(2026,11,5,17,tzinfo=timezone.utc));page.evaluate('refreshForNewDay()')
  assert page.evaluate('paceStats(model()).baseline.employees')==3
  assert page.evaluate('paceStats(model()).current.employees')==3
  assert page.evaluate('priorCutoff("2028-02-29")')=='2027-02-28'
+ assert page.evaluate('calendarDayBefore("2026-01-01")')=='2025-12-31'
+ assert page.evaluate('calendarDayBefore("2028-03-01")')=='2028-02-29'
+ assert page.evaluate('priorCutoff(calendarDayBefore("2028-03-01"))')=='2027-02-28'
+ assert page.evaluate('calendarDayBefore("2026-11-02")')=='2026-11-01'
  assert page.evaluate('consentDay("02/30/2026")') is None
  assert page.evaluate('consentDay("2026-11-04T23:59:59Z")')=='2026-11-04'
  print('Automatic today cutoff, next-day refresh, leap-day alignment, ISO/US timestamps and invalid dates: passed')
