@@ -24,7 +24,7 @@ with sync_playwright() as p:
  assert page.locator('#renewal-employee-progress .enrollment-donut-value b').all_inner_texts()==['2','1']
  assert page.locator('#renewal-employee-progress .enrollment-donut-number').text_content()=='66.7%'
  assert '3 employees\n7 lives' in page.locator('#renewal-employee-progress').inner_text()
- assert '@example.test' not in page.locator('.enrollment-charts').inner_text()
+ assert '@example.test' not in page.locator('#enrollment-progress-charts').inner_text()
  assert 'Returned: 2 (66.7%)' in page.locator('#renewal-employees-desc').text_content()
  # The group comparison intentionally uses active baseline rows, not the Jan 1 cohort.
  assert page.evaluate('model().active.length')==5;assert page.evaluate('model().bench.length')==7
@@ -46,8 +46,8 @@ with sync_playwright() as p:
  page.locator('[data-filter=type]').select_option('New');assert page.locator('.enrollment-charts svg').count()==0;assert '1 new group with enrollment' in page.locator('#renewal-group-progress').inner_text()
  page.locator('#reset').click();page.locator('[data-filter=renewalDecision]').select_option('excluded');assert page.locator('#renewal-group-progress .enrollment-donut-value b').all_inner_texts()==['0','0','1'];assert page.locator('#renewal-employee-progress svg').count()==0
  page.locator('#reset').click()
- page.evaluate('uploads.current=null;render()');assert page.locator('.enrollment-charts svg').count()==0;assert 'Upload the baseline and current reports' in page.locator('.enrollment-charts').inner_text()
+ page.evaluate('uploads.current=null;render()');assert page.locator('.enrollment-charts svg').count()==0;assert 'Upload the baseline and current reports' in page.locator('#enrollment-progress-charts').inner_text()
  page.evaluate('uploads.current=[];render()');assert page.locator('#renewal-group-progress .enrollment-donut-value b').all_inner_texts()==['0','2','1'];assert page.locator('#renewal-employee-progress svg').count()==0
- assert 'NaN' not in page.locator('.enrollment-charts').inner_text();assert not errors,errors;b.close()
+ assert 'NaN' not in page.locator('#enrollment-progress-charts').inner_text();assert not errors,errors;b.close()
 print('PASS group activity, started-group return denominator, new enrollments kept separate, transfers, nonrenewals, Jan 1 vs active baseline distinction, compact employee/life cells, filters and responsive/empty states')
 server.shutdown()
